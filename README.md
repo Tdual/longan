@@ -37,12 +37,14 @@ pip install "numpy<2"
 
 1. PDFファイルをプロジェクトディレクトリに配置
 2. VOICEVOXを起動（デフォルト: http://localhost:50021）
-3. 対話内容を設定（`data/dialogue_narration_katakana.json`参照）
+3. 音声を生成：
+   ```bash
+   python scripts/generate_audio.py
+   ```
 4. 動画を生成：
-
-```bash
-python scripts/create_video.py
-```
+   ```bash
+   python scripts/create_video.py
+   ```
 
 ### プロジェクト構成
 
@@ -51,16 +53,18 @@ python scripts/create_video.py
 gen_movie/
 ├── src/                    # コアライブラリ
 │   ├── dialogue_video_creator.py           # 高品質動画作成
-│   ├── dialogue_voicevox_generator.py      # VOICEVOX音声生成
-│   └── pdf_converter.py                    # PDF→画像変換
+│   ├── voicevox_generator.py               # VOICEVOX音声生成
+│   ├── pdf_converter.py                    # PDF→画像変換
+│   └── english_to_katakana.py              # 英語→カタカナ変換
 ├── scripts/                # 実行スクリプト
 │   ├── create_video.py                     # 動画作成
+│   ├── generate_audio.py                   # 音声生成（抑揚1.2）
 │   └── generate_katakana_audio.py          # カタカナ音声生成
 ├── data/                   # 設定・データファイル
 │   └── dialogue_narration_katakana.json    # カタカナ対応対話内容
 ├── output/                 # 動画出力
 ├── slides/                 # スライド画像
-└── audio_katakana/         # 音声ファイル
+└── audio/                  # 音声ファイル
 ```
 
 #### 実行方法
@@ -87,6 +91,7 @@ python scripts/create_video.py
 
 ### 音声品質の特徴
 
+- 抑揚を1.2に設定して表現豊かな音声を実現
 - 各音声の終わりに50msのフェードアウトを適用
 - 話者間の間隔を0.8秒に最適化
 - 音量レベルを90%に調整
@@ -123,7 +128,7 @@ pip install "numpy<2"
 
 - 生成された動画ファイル（output/ディレクトリ）
 - スライド画像（slides/ディレクトリ）
-- 音声ファイル（audio_katakana/ディレクトリ）
+- 音声ファイル（audio/ディレクトリ）
 
 ## ライセンス
 

@@ -19,18 +19,18 @@ def create_video():
     # スライド画像のパスを取得（最初の3スライドでテスト）
     slides_dir = Path("slides")
     image_paths = []
-    for i in range(1, 4):  # テスト用に3スライドのみ
+    for i in range(1, 19):  # 全18スライド
         slide_path = slides_dir / f"slide_{i:03d}.png"
         if slide_path.exists():
             image_paths.append(str(slide_path))
     
     print(f"使用するスライド数: {len(image_paths)}")
     
-    # カタカナ版音声ファイル情報を構築
+    # 音声ファイル情報を構築
     dialogue_audio_info = {}
-    audio_dir = Path("audio_katakana")
+    audio_dir = Path("audio")
     
-    for i in range(1, 4):  # テスト用に3スライドのみ
+    for i in range(1, 19):  # 全18スライド
         slide_key = f"slide_{i}"
         dialogue_audio_info[slide_key] = []
         

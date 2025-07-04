@@ -90,4 +90,9 @@ create_*_test.py
 create_*_temp.py
 
 # Generated documentation
-README_VOICEVOX.md
+README_VOICEVOX.md*.pyc
+__pycache__/
+.DS_Store
+temp/
+*.wav
+!audio/*.wav
