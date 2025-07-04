@@ -37,32 +37,45 @@ pip install "numpy<2"
 
 1. PDFファイルをプロジェクトディレクトリに配置
 2. VOICEVOXを起動（デフォルト: http://localhost:50021）
-3. 対話内容を設定（`dialogue_narration_synced.json`参照）
+3. 対話内容を設定（`data/dialogue_narration_katakana.json`参照）
 4. 動画を生成：
 
 ```bash
-python create_final_funny_video.py
+python scripts/create_fade_end_video.py
 ```
 
-### 主要なファイル
+### プロジェクト構成
 
-#### コアファイル
-- `create_final_funny_video.py` - 最終的な面白い対話動画を生成
-- `dialogue_video_creator_fixed.py` - 動画作成エンジン（音声途切れ修正版）
-- `dialogue_voicevox_generator.py` - VOICEVOX音声生成
-- `pdf_converter.py` - PDF→画像変換
+#### ディレクトリ構造
+```
+gen_movie/
+├── src/                    # コアライブラリ
+│   ├── dialogue_video_creator_fade_end.py  # 高品質動画作成（ポップノイズ修正版）
+│   ├── dialogue_video_creator_no_pop.py    # ノイズ軽減版
+│   ├── dialogue_video_creator_smooth.py    # スムーズ再生版
+│   ├── dialogue_voicevox_generator.py      # VOICEVOX音声生成
+│   └── pdf_converter.py                    # PDF→画像変換
+├── scripts/                # 実行スクリプト
+│   ├── create_fade_end_video.py            # 推奨：ポップノイズ修正版
+│   ├── create_no_pop_video.py              # ノイズ軽減版
+│   ├── create_smooth_video.py              # スムーズ再生版
+│   └── generate_katakana_audio.py          # カタカナ音声生成
+├── data/                   # 設定・データファイル
+│   └── dialogue_narration_katakana.json    # カタカナ対応対話内容
+├── output/                 # 動画出力
+├── slides/                 # スライド画像
+└── audio_katakana/         # 音声ファイル
+```
 
-#### 設定ファイル
-- `dialogue_narration_synced.json` - 面白い対話内容（スライドと同期）
-- `requirements.txt` - Python依存パッケージ
-
-#### ユーティリティ
-- `create_working_video.py` - 基本動画作成（動作確認用）
-- `generate_remaining_audio.py` - 追加音声生成
+#### 推奨の実行方法
+最高品質のポップノイズ修正版を使用：
+```bash
+python scripts/create_fade_end_video.py
+```
 
 ## 対話内容のカスタマイズ
 
-`dialogue_narration_synced.json`ファイルで対話内容をカスタマイズできます：
+`data/dialogue_narration_katakana.json`ファイルで対話内容をカスタマイズできます：
 
 ```json
 {
@@ -76,6 +89,14 @@ python create_final_funny_video.py
   ]
 }
 ```
+
+### 音声品質の特徴
+
+#### ポップノイズ修正版の改善点
+- 各音声の終わりに50msのフェードアウトを適用
+- 話者間の間隔を0.8秒に最適化
+- 音量レベルを90%に調整
+- 英語単語のカタカナ変換に対応
 
 ## 音声キャラクター
 
@@ -105,9 +126,9 @@ pip install "numpy<2"
 
 ## 出力
 
-- 生成された動画ファイル（.mp4）
+- 生成された動画ファイル（output/ディレクトリ）
 - スライド画像（slides/ディレクトリ）
-- 音声ファイル（audio_synced/ディレクトリ）
+- 音声ファイル（audio_katakana/ディレクトリ）
 
 ## ライセンス
 
