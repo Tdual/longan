@@ -107,21 +107,21 @@ class DialogueVideoCreator:
         
         # 動画を出力
         print(f"動画を出力中: {output_path}")
-        # Docker環境でのパフォーマンス最適化
+        # Docker環境での最適化（高画質版）
         final_video.write_videofile(
             output_path,
             fps=fps,
             codec='libx264',
-            audio_codec='aac',  # より軽量なAACコーデック
-            preset='ultrafast',  # 最高速のエンコード設定
-            threads=8,  # より多くのスレッドを使用
-            bitrate='500k',  # ビットレートを制限して高速化
-            audio_bitrate='128k',  # 音声ビットレートも制限
-            temp_audiofile=None,  # 一時ファイルを使わない
+            audio_codec='aac',
+            preset='medium',  # 高画質のためにプリセットを調整
+            threads=8,
+            bitrate='2000k',  # 高画質のためにビットレートを上げる
+            audio_bitrate='192k',  # 音声品質も向上
+            temp_audiofile=None,
             remove_temp=True,
             verbose=False,
             logger='bar',
-            write_logfile=False  # ログファイル作成を無効化
+            write_logfile=False
         )
         
         # リソースを解放
