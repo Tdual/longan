@@ -1,0 +1,38 @@
+services:
+  # VOICEVOX エンジン
+  voicevox:
+    image: voicevox/voicevox_engine:cpu-ubuntu20.04-latest
+    ports:
+      - "50021:50021"
+    networks:
+      - app-network
+
+  # FastAPI アプリケーション
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      - VOICEVOX_URL=http://voicevox:50021
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    volumes:
+      - ./uploads:/app/uploads
+      - ./output:/app/output
+      - ./slides:/app/slides
+      - ./audio:/app/audio
+      - ./data:/app/data
+      - ./api:/app/api
+      - ./src:/app/src
+    depends_on:
+      - voicevox
+    networks:
+      - app-network
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+
+networks:
+  app-network:
+    driver: bridge

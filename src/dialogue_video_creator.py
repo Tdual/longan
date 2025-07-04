@@ -1,9 +1,29 @@
 from moviepy.editor import ImageClip, AudioFileClip, concatenate_audioclips, concatenate_videoclips
+from moviepy.audio.AudioClip import AudioClip
+import numpy as np
 from pathlib import Path
 
 class DialogueVideoCreator:
     def __init__(self):
         pass
+    
+    def create_silence(self, duration, fps=22050):
+        """効率的な無音クリップを作成"""
+        # 実際の音声ファイルからテンプレートを作って無音を生成（より確実）
+        from moviepy.editor import AudioFileClip
+        
+        # 最初の音声ファイルをテンプレートとして使用
+        template_files = list(Path("audio").glob("**/*.wav"))
+        if template_files:
+            template_audio = AudioFileClip(str(template_files[0]))
+            silence = template_audio.subclip(0, min(0.1, template_audio.duration)).volumex(0).set_duration(duration)
+            template_audio.close()
+            return silence
+        else:
+            # フォールバック: 直接作成
+            def make_frame(t):
+                return np.array([0.0, 0.0])
+            return AudioClip(make_frame, duration=duration, fps=fps)
     
     def apply_end_fade(self, audio_clip):
         """音声の終わりに短いフェードアウトを適用"""
@@ -41,12 +61,8 @@ class DialogueVideoCreator:
                     
                     audio_clips.append(audio_clip)
                     
-                    # 最後の音声でなければ、短めの無音を追加
-                    if i < len(audio_infos) - 1:
-                        silence_duration = 0.8  # 0.8秒に短縮
-                        # シンプルな無音作成
-                        silence = AudioFileClip(info["audio_path"]).subclip(0, 0.02).volumex(0).set_duration(silence_duration)
-                        audio_clips.append(silence)
+                    # パフォーマンス向上のため無音処理をスキップ
+                    # 各音声クリップ間の無音は除去し、連続再生する
             
             if audio_clips:
                 # すべての音声を連結
@@ -54,8 +70,11 @@ class DialogueVideoCreator:
                 
                 # 全体の最後に短い余白を追加
                 final_silence_duration = 1.0  # 1秒に短縮
-                final_silence = AudioFileClip(audio_infos[0]["audio_path"]).subclip(0, 0.02).volumex(0).set_duration(final_silence_duration)
-                combined_audio = concatenate_audioclips([combined_audio, final_silence])
+                # 最後の音声クリップを使って無音を作成
+                if audio_clips:
+                    last_audio = audio_clips[0]  # 最初の音声を使用
+                    final_silence = last_audio.subclip(0, min(0.1, last_audio.duration)).volumex(0).set_duration(final_silence_duration)
+                    combined_audio = concatenate_audioclips([combined_audio, final_silence])
                 
                 duration = combined_audio.duration
                 image_clip = image_clip.set_duration(duration)
@@ -88,15 +107,21 @@ class DialogueVideoCreator:
         
         # 動画を出力
         print(f"動画を出力中: {output_path}")
+        # Docker環境でのパフォーマンス最適化
         final_video.write_videofile(
             output_path,
             fps=fps,
             codec='libx264',
-            audio_codec='pcm_s16le',  # PCMコーデック
-            temp_audiofile='temp-audio.wav',
+            audio_codec='aac',  # より軽量なAACコーデック
+            preset='ultrafast',  # 最高速のエンコード設定
+            threads=8,  # より多くのスレッドを使用
+            bitrate='500k',  # ビットレートを制限して高速化
+            audio_bitrate='128k',  # 音声ビットレートも制限
+            temp_audiofile=None,  # 一時ファイルを使わない
             remove_temp=True,
             verbose=False,
-            logger='bar'
+            logger='bar',
+            write_logfile=False  # ログファイル作成を無効化
         )
         
         # リソースを解放
