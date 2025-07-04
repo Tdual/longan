@@ -1,0 +1,93 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Claude Code
+.claude/
+
+# Generated output directories
+slides/
+audio/
+audio_synced/
+audio_funny/
+avatars/
+output/
+
+# Generated video files (large files)
+*.mp4
+
+# Generated audio files
+*.mp3
+*.wav
+
+# Generated image files
+*.png
+*.jpg
+*.jpeg
+
+# Input PDF files (user should add their own)
+*.pdf
+
+# Temporary files
+*TEMP_MPY*
+temp-audio*
+
+# Test files
+test_*.mp4
+test_*.py
+
+# Backup and temporary scripts
+*_old.py
+*_backup.py
+*_temp.py
+create_*_test.py
+create_*_temp.py
+
+# Generated documentation
+README_VOICEVOX.md
