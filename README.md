@@ -16,6 +16,11 @@ PDFスライドを日本語音声付きの動画に変換するツールです�
 - VOICEVOX（音声合成エンジン）
 - conda環境推奨（NumPy互換性のため）
 
+### Docker環境での実行も可能
+
+Dockerを使用すれば、VOICEVOXの環境構築が不要になります。
+詳細は[README_DOCKER.md](README_DOCKER.md)を参照してください。
+
 ## インストール
 
 1. VOICEVOXをダウンロード・インストールし、起動してください

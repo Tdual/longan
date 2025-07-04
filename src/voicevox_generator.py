@@ -4,7 +4,11 @@ from pathlib import Path
 import time
 
 class VoicevoxGenerator:
-    def __init__(self, output_dir="audio", voicevox_url="http://localhost:50021"):
+    def __init__(self, output_dir="audio", voicevox_url=None):
+        if voicevox_url is None:
+            # 環境変数から取得、なければデフォルト
+            import os
+            voicevox_url = os.getenv("VOICEVOX_URL", "http://localhost:50021")
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
         self.voicevox_url = voicevox_url
