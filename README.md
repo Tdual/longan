@@ -41,7 +41,7 @@ pip install "numpy<2"
 4. 動画を生成：
 
 ```bash
-python scripts/create_fade_end_video.py
+python scripts/create_video.py
 ```
 
 ### プロジェクト構成
@@ -50,15 +50,11 @@ python scripts/create_fade_end_video.py
 ```
 gen_movie/
 ├── src/                    # コアライブラリ
-│   ├── dialogue_video_creator_fade_end.py  # 高品質動画作成（ポップノイズ修正版）
-│   ├── dialogue_video_creator_no_pop.py    # ノイズ軽減版
-│   ├── dialogue_video_creator_smooth.py    # スムーズ再生版
+│   ├── dialogue_video_creator.py           # 高品質動画作成
 │   ├── dialogue_voicevox_generator.py      # VOICEVOX音声生成
 │   └── pdf_converter.py                    # PDF→画像変換
 ├── scripts/                # 実行スクリプト
-│   ├── create_fade_end_video.py            # 推奨：ポップノイズ修正版
-│   ├── create_no_pop_video.py              # ノイズ軽減版
-│   ├── create_smooth_video.py              # スムーズ再生版
+│   ├── create_video.py                     # 動画作成
 │   └── generate_katakana_audio.py          # カタカナ音声生成
 ├── data/                   # 設定・データファイル
 │   └── dialogue_narration_katakana.json    # カタカナ対応対話内容
@@ -67,10 +63,9 @@ gen_movie/
 └── audio_katakana/         # 音声ファイル
 ```
 
-#### 推奨の実行方法
-最高品質のポップノイズ修正版を使用：
+#### 実行方法
 ```bash
-python scripts/create_fade_end_video.py
+python scripts/create_video.py
 ```
 
 ## 対話内容のカスタマイズ
@@ -92,11 +87,11 @@ python scripts/create_fade_end_video.py
 
 ### 音声品質の特徴
 
-#### ポップノイズ修正版の改善点
 - 各音声の終わりに50msのフェードアウトを適用
 - 話者間の間隔を0.8秒に最適化
 - 音量レベルを90%に調整
 - 英語単語のカタカナ変換に対応
+- ポップノイズの除去
 
 ## 音声キャラクター
 

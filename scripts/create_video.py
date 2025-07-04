@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-滑らかな音声遷移版の動画作成スクリプト
-話者切り替わり時のノイズを軽減
+終了フェード版の動画作成スクリプト
+音声の終わりにフェードアウトを適用してポップノイズを軽減
 """
 import json
 import sys
@@ -10,16 +10,16 @@ from pathlib import Path
 # srcディレクトリをパスに追加
 sys.path.append('src')
 
-from dialogue_video_creator_smooth import DialogueVideoCreatorSmooth
+from dialogue_video_creator import DialogueVideoCreator
 
-def create_smooth_video():
-    """滑らかな音声遷移版の動画を作成"""
-    print("=== 滑らかな音声遷移版動画作成 ===")
+def create_video():
+    """高品質な動画を作成"""
+    print("=== 高品質動画作成 ===")
     
-    # スライド画像のパスを取得（最初の5スライドでテスト）
+    # スライド画像のパスを取得（最初の3スライドでテスト）
     slides_dir = Path("slides")
     image_paths = []
-    for i in range(1, 6):  # テスト用に5スライドのみ
+    for i in range(1, 4):  # テスト用に3スライドのみ
         slide_path = slides_dir / f"slide_{i:03d}.png"
         if slide_path.exists():
             image_paths.append(str(slide_path))
@@ -30,7 +30,7 @@ def create_smooth_video():
     dialogue_audio_info = {}
     audio_dir = Path("audio_katakana")
     
-    for i in range(1, 6):  # テスト用に5スライドのみ
+    for i in range(1, 4):  # テスト用に3スライドのみ
         slide_key = f"slide_{i}"
         dialogue_audio_info[slide_key] = []
         
@@ -49,27 +49,27 @@ def create_smooth_video():
         
         print(f"  {slide_key}: {len(dialogue_audio_info[slide_key])} 音声ファイル")
     
-    # 滑らか版動画作成器を使用
-    print("\n=== 滑らかな音声遷移版動画作成中 ===")
-    print("改善点:")
-    print("- 音声の開始・終了にフェードイン・フェードアウト")
-    print("- 滑らかな無音の生成")
-    print("- AACコーデックによる高品質音声")
-    print("- ポップノイズの軽減")
+    # 高品質動画作成器を使用
+    print("\n=== 高品質動画作成中 ===")
+    print("特徴:")
+    print("- 各音声の終わりに50msのフェードアウト")
+    print("- 話者間の間隔を0.8秒に最適化")
+    print("- 音量を90%に調整")
+    print("- 各スライドの最後に1秒の余白")
     
-    video_creator = DialogueVideoCreatorSmooth()
+    video_creator = DialogueVideoCreator()
     output_path = video_creator.create_dialogue_video(
         image_paths,
         dialogue_audio_info,
-        "output/claude_code_smooth_test.mp4"
+        "output/claude_code_video.mp4"
     )
     
-    print(f"\n✅ 滑らかな音声遷移版動画が作成されました: {output_path}")
-    print("話者切り替わり時のノイズが軽減されているか確認してください！")
+    print(f"\n✅ 高品質動画が作成されました: {output_path}")
+    print("高品質な音声処理により、クリアな動画が生成されました。")
 
 def main():
     """メイン処理"""
-    create_smooth_video()
+    create_video()
 
 if __name__ == "__main__":
     main()
