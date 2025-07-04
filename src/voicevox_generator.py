@@ -3,15 +3,12 @@ import json
 from pathlib import Path
 import time
 
-class DialogueVoicevoxGenerator:
+class VoicevoxGenerator:
     def __init__(self, output_dir="audio", voicevox_url="http://localhost:50021"):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
         self.voicevox_url = voicevox_url
-        self.speakers = {
-            "metan": 2,    # 四国めたん（あまあま）
-            "zundamon": 3  # ずんだもん
-        }
+        self.speaker_id = 3  # ずんだもんのスピーカーID
     
     def check_voicevox_status(self):
         """VOICEVOXが起動しているか確認"""
@@ -21,9 +18,10 @@ class DialogueVoicevoxGenerator:
         except:
             return False
     
-    def generate_audio(self, text, speaker_name, output_filename):
+    def generate_audio(self, text, output_filename, speaker_id=None):
         """VOICEVOXでテキストから音声ファイルを生成"""
-        speaker_id = self.speakers.get(speaker_name, 3)
+        if speaker_id is None:
+            speaker_id = self.speaker_id
         
         # 音声クエリの作成
         query_data = {
@@ -57,41 +55,25 @@ class DialogueVoicevoxGenerator:
         
         return str(output_path)
     
-    def generate_dialogue_audio(self, dialogue_data):
-        """対話形式のナレーションから音声ファイルを生成"""
+    def generate_audio_for_slides(self, slide_texts):
+        """各スライドのテキストから音声ファイルを生成"""
         if not self.check_voicevox_status():
             raise Exception("VOICEVOXが起動していません。VOICEVOXを起動してください。")
         
-        audio_info = {}  # スライドごとの音声情報
+        audio_paths = []
         
-        for slide_key, dialogues in dialogue_data.items():
-            slide_num = slide_key.split("_")[1]
-            audio_info[slide_key] = []
-            
-            for i, dialogue in enumerate(dialogues):
-                speaker = dialogue["speaker"]
-                text = dialogue["text"]
-                
-                # ファイル名: slide_XX_YY_speaker.wav
-                audio_filename = f"slide_{int(slide_num):03d}_{i+1:02d}_{speaker}.wav"
-                
-                speaker_name = "四国めたん" if speaker == "metan" else "ずんだもん"
-                print(f"音声生成中: スライド {slide_num} - {speaker_name}: {text[:20]}...")
-                
+        for i, text in enumerate(slide_texts):
+            if text.strip():  # 空でないテキストの場合のみ
+                audio_filename = f"slide_{i+1:03d}.wav"
+                print(f"音声生成中: スライド {i+1} (ずんだもん)")
                 try:
-                    audio_path = self.generate_audio(text, speaker, audio_filename)
-                    audio_info[slide_key].append({
-                        "speaker": speaker,
-                        "text": text,
-                        "audio_path": audio_path
-                    })
-                    time.sleep(0.5)  # API負荷軽減
+                    audio_path = self.generate_audio(text, audio_filename)
+                    audio_paths.append(audio_path)
+                    time.sleep(0.5)  # API負荷軽減のため少し待機
                 except Exception as e:
                     print(f"  エラー: {e}")
-                    audio_info[slide_key].append({
-                        "speaker": speaker,
-                        "text": text,
-                        "audio_path": None
-                    })
+                    audio_paths.append(None)
+            else:
+                audio_paths.append(None)
         
-        return audio_info
+        return audio_paths
