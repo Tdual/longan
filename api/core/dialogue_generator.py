@@ -32,17 +32,25 @@ class DialogueGenerator:
                 except Exception as e:
                     print(f"進捗コールバックエラー: {e}")
             
+            # 過去のスライドの対話を収集
+            previous_dialogues = {}
+            for j in range(i):
+                prev_key = f"slide_{j+1}"
+                if prev_key in dialogue_data:
+                    previous_dialogues[prev_key] = dialogue_data[prev_key]
+            
             slide_dialogue = self.generate_dialogue_for_single_slide(
                 slide_number=i+1,
                 slide_text=slide_text,
                 total_slides=len(slide_texts),
+                previous_dialogues=previous_dialogues,
                 additional_prompt=additional_prompt
             )
             dialogue_data[slide_key] = slide_dialogue
         
         return dialogue_data
     
-    def generate_dialogue_for_single_slide(self, slide_number: int, slide_text: str, total_slides: int, additional_prompt: str = None, max_retries: int = 3) -> List[Dict]:
+    def generate_dialogue_for_single_slide(self, slide_number: int, slide_text: str, total_slides: int, previous_dialogues: Dict = None, additional_prompt: str = None, max_retries: int = 3) -> List[Dict]:
         """単一スライドの対話を生成"""
         
         system_prompt = """あなたは魅力的な教育動画を作成するプロの脚本家です。四国めたんとずんだもんによる楽しい対話を書いてください。
@@ -73,7 +81,21 @@ class DialogueGenerator:
         
         user_prompt = f"""スライド{slide_number}/{total_slides}の内容について、めたんとずんだもんの魅力的な対話を作成してください。
 
-スライド内容：
+"""
+        
+        # 過去の対話がある場合は追加（直近2スライド分のみ）
+        if previous_dialogues:
+            user_prompt += "これまでの対話内容:\n"
+            # 直近の2スライド分のみを取得
+            recent_slides = sorted(previous_dialogues.keys())[-2:]
+            for prev_slide in recent_slides:
+                prev_dialogue = previous_dialogues[prev_slide]
+                user_prompt += f"\n{prev_slide}:\n"
+                for dialogue in prev_dialogue:
+                    user_prompt += f"- {dialogue['speaker']}: {dialogue['text']}\n"
+            user_prompt += "\n"
+        
+        user_prompt += f"""現在のスライド{slide_number}の内容：
 """
         user_prompt += slide_text
         user_prompt += """
@@ -83,6 +105,9 @@ class DialogueGenerator:
 - 会話は具体的で内容が濃いものにする（単なる相槌ではなく、情報を含む発話）
 - ずんだもんは「〜なのだ」語尾を必ず使用し、具体的な質問や感想を述べる
 - めたんは専門知識を噛み砕いて、例え話や具体例を交えて丁寧に説明
+- 過去の対話内容がある場合は、その文脈を踏まえて自然な流れで会話を続ける
+- 前のスライドで説明した内容は「さっき話した〜」のように参照する
+- 話題の重複を避け、新しい情報や視点を提供する
 - 以下の要素を必ず含める：
   * スライドの主要なポイントの詳細な説明
   * 具体的な例や応用例の紹介
