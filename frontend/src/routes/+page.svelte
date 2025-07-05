@@ -23,16 +23,29 @@
 		url: string;
 	}
 
+	interface DialogueResponse {
+		dialogue_data: DialogueData;
+		estimated_duration: {
+			seconds: number;
+			formatted: string;
+		};
+	}
+
 	let selectedFile: File | null = null;
 	let currentJob: Job | null = null;
 	let isUploading = false;
 	let dragover = false;
 	let dialogueData: DialogueData | null = null;
+	let estimatedDuration: { seconds: number; formatted: string } | null = null;
 	let editingDialogue = false;
 	let additionalPrompt = '';
 	let currentStep: 'upload' | 'dialogue' | 'video' = 'upload';
 	let slides: Slide[] = [];
 	let isRegenerating = false;
+	let instructionHistory: any = {};
+	let showHistory = false;
+	let showHistoryForSlide: string | null = null;
+	let targetDuration = 10; // デフォルト10分
 	
 
 	async function handleFileSelect(event: Event) {
@@ -59,6 +72,7 @@
 		try {
 			const formData = new FormData();
 			formData.append('file', selectedFile);
+			formData.append('target_duration', targetDuration.toString());
 
 			const response = await fetch(getApiUrl('/api/jobs/upload'), {
 				method: 'POST',
@@ -174,8 +188,19 @@
 				return;
 			}
 
-			dialogueData = await dialogueResponse.json();
+			const dialogueResult: DialogueResponse = await dialogueResponse.json();
+			console.log('Raw dialogueResult:', dialogueResult);
+			console.log('dialogue_data keys before assignment:', Object.keys(dialogueResult.dialogue_data));
+			
+			// Svelteの反応性を確実にするため、新しいオブジェクトとして割り当て
+			dialogueData = { ...dialogueResult.dialogue_data };
+			estimatedDuration = dialogueResult.estimated_duration;
+			
+			// デバッグ用ログ
 			console.log('対話データ取得成功:', Object.keys(dialogueData).length + 'スライド');
+			console.log('推定動画時間:', estimatedDuration?.formatted);
+			console.log('dialogueData after assignment:', dialogueData);
+			console.log('dialogueData keys:', Object.keys(dialogueData));
 			
 			// スライド画像も取得
 			const slidesResponse = await fetch(getApiUrl(`/api/jobs/${jobId}/slides${timestamp}`));
@@ -184,6 +209,9 @@
 				console.log('スライド画像取得成功:', slides.length + '枚');
 			}
 			
+			// 指示履歴も取得
+			await loadInstructionHistory(jobId);
+			
 			currentStep = 'dialogue';
 			console.log('currentStep更新:', currentStep);
 			
@@ -191,6 +219,19 @@
 			await tick();
 		} catch (error) {
 			console.error('対話データ取得エラー:', error);
+		}
+	}
+
+	async function loadInstructionHistory(jobId: string) {
+		try {
+			const response = await fetch(getApiUrl(`/api/jobs/${jobId}/instruction-history`));
+			if (response.ok) {
+				const data = await response.json();
+				instructionHistory = data.history || {};
+				console.log('指示履歴取得成功:', instructionHistory);
+			}
+		} catch (error) {
+			console.error('指示履歴取得エラー:', error);
 		}
 	}
 
@@ -266,10 +307,13 @@
 		currentJob = null;
 		isUploading = false;
 		dialogueData = null;
+		estimatedDuration = null;
 		editingDialogue = false;
 		additionalPrompt = '';
 		currentStep = 'upload';
 		isRegenerating = false;
+		showHistoryForSlide = null;
+		targetDuration = 10; // デフォルトに戻す
 	}
 
 	function addDialogueItem(slideKey: string) {
@@ -283,6 +327,14 @@
 	function removeDialogueItem(slideKey: string, index: number) {
 		if (!dialogueData) return;
 		dialogueData[slideKey] = dialogueData[slideKey].filter((_, i) => i !== index);
+	}
+
+	function toggleSlideHistory(slideKey: string) {
+		if (showHistoryForSlide === slideKey) {
+			showHistoryForSlide = null;
+		} else {
+			showHistoryForSlide = slideKey;
+		}
 	}
 </script>
 
@@ -298,32 +350,34 @@
 
 	{#if currentStep === 'upload' && !currentJob}
 		<section class="upload-section">
-			<div 
-				class="dropzone" 
-				class:dragover
-				role="button"
-				tabindex="0"
-				on:dragover|preventDefault={() => dragover = true}
-				on:dragleave={() => dragover = false}
-				on:drop={handleDrop}
-			>
-				<div class="drop-content">
-					<div class="upload-icon">📁</div>
-					<h3>PDFファイルをアップロード</h3>
-					<p>ドラッグ&ドロップまたはクリックしてファイルを選択</p>
-					
-					<input 
-						type="file" 
-						accept=".pdf" 
-						on:change={handleFileSelect}
-						class="file-input"
-						id="file-input"
-					/>
-					<label for="file-input" class="file-label">
-						ファイルを選択
-					</label>
+			{#if !selectedFile}
+				<div 
+					class="dropzone" 
+					class:dragover
+					role="button"
+					tabindex="0"
+					on:dragover|preventDefault={() => dragover = true}
+					on:dragleave={() => dragover = false}
+					on:drop={handleDrop}
+				>
+					<div class="drop-content">
+						<div class="upload-icon">📁</div>
+						<h3>PDFファイルをアップロード</h3>
+						<p>ドラッグ&ドロップまたはクリックしてファイルを選択</p>
+						
+						<input 
+							type="file" 
+							accept=".pdf" 
+							on:change={handleFileSelect}
+							class="file-input"
+							id="file-input"
+						/>
+						<label for="file-input" class="file-label">
+							ファイルを選択
+						</label>
+					</div>
 				</div>
-			</div>
+			{/if}
 
 			{#if selectedFile}
 				<div class="file-info">
@@ -331,6 +385,19 @@
 						<strong>選択ファイル:</strong> {selectedFile.name}
 						<br>
 						<strong>サイズ:</strong> {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+					</div>
+					
+					<div class="duration-setting">
+						<label for="target-duration">目安動画時間:</label>
+						<input 
+							type="number" 
+							id="target-duration"
+							bind:value={targetDuration}
+							min="1"
+							max="60"
+							step="1"
+						/>
+						<span>分</span>
 					</div>
 					
 					<button 
@@ -351,6 +418,13 @@
 		<section class="dialogue-section">
 			<h3>📝 対話スクリプト編集</h3>
 			
+			{#if estimatedDuration}
+				<div class="duration-estimate">
+					<span class="duration-icon">⏱️</span>
+					<span class="duration-text">推定動画時間: <strong>{estimatedDuration.formatted}</strong></span>
+				</div>
+			{/if}
+			
 			<div class="dialogue-controls">
 				<button class="edit-btn" on:click={() => editingDialogue = !editingDialogue}>
 					{editingDialogue ? '編集を終了' : '✏️ スクリプトを編集'}
@@ -359,6 +433,18 @@
 					🎥 動画生成開始
 				</button>
 			</div>
+
+			{#if editingDialogue}
+				<div class="edit-notice">
+					<span class="notice-icon">⚠️</span>
+					<span class="notice-text">
+						<strong>編集時の注意：</strong>英単語はカタカナで入力してください。
+						アルファベットのまま入力すると音声生成時に正しく読み上げられない場合があります。
+						<br>
+						例: API → エーピーアイ、Claude → クロード、AI → エーアイ
+					</span>
+				</div>
+			{/if}
 
 			<div class="additional-prompt-section">
 				<label for="additional-prompt">AIへの追加指示（再生成時に使用）:</label>
@@ -388,17 +474,42 @@
 
 			<div class="dialogue-list">
 				{#each Object.entries(dialogueData) as [slideKey, dialogues]}
+					{@const slideNum = parseInt(slideKey.split('_')[1])}
+					{@const slideHistory = instructionHistory[slideKey] || []}
 					<div class="slide-dialogue">
 						<div class="slide-header">
 							{#if slides.length > 0}
-								{@const slideNum = parseInt(slideKey.split('_')[1])}
 								{@const slide = slides.find(s => s.slide_number === slideNum)}
 								{#if slide}
 									<img src={getApiUrl(slide.url)} alt="Slide {slideNum}" class="slide-thumbnail" />
 								{/if}
 							{/if}
 							<h4>{slideKey.replace('_', ' ')}</h4>
+							{#if slideHistory.length > 0}
+								<button 
+									class="history-toggle"
+									on:click={() => toggleSlideHistory(slideKey)}
+									title="指示履歴を表示"
+								>
+									📝 履歴 ({slideHistory.length})
+								</button>
+							{/if}
 						</div>
+						{#if showHistoryForSlide === slideKey}
+							<div class="instruction-history">
+								<h5>再生成指示履歴:</h5>
+								{#each slideHistory as hist, idx}
+									<div class="history-item">
+										<div class="history-timestamp">
+											{new Date(hist.timestamp).toLocaleString('ja-JP')}
+										</div>
+										<div class="history-instruction">
+											{hist.instruction}
+										</div>
+									</div>
+								{/each}
+							</div>
+						{/if}
 						{#each dialogues as dialogue, index}
 							<div class="dialogue-item">
 								<div class="speaker-label {dialogue.speaker}">
@@ -605,6 +716,31 @@
 		max-width: 100%;
 	}
 
+	.duration-estimate {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		background-color: #e0f2fe;
+		padding: 0.75rem 1rem;
+		border-radius: 8px;
+		margin-bottom: 1.5rem;
+		border: 1px solid #7dd3fc;
+	}
+
+	.duration-icon {
+		font-size: 1.25rem;
+	}
+
+	.duration-text {
+		color: #0369a1;
+		font-size: 1rem;
+	}
+
+	.duration-text strong {
+		font-weight: 600;
+		color: #0c4a6e;
+	}
+
 	.dialogue-controls {
 		display: flex;
 		gap: 1rem;
@@ -623,6 +759,32 @@
 
 	.edit-btn:hover {
 		background-color: #2563eb;
+	}
+
+	.edit-notice {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.75rem;
+		background-color: #fef3c7;
+		border: 1px solid #fbbf24;
+		padding: 1rem;
+		border-radius: 8px;
+		margin: 1rem 0;
+	}
+
+	.notice-icon {
+		font-size: 1.25rem;
+		flex-shrink: 0;
+	}
+
+	.notice-text {
+		color: #92400e;
+		font-size: 0.9rem;
+		line-height: 1.5;
+	}
+
+	.notice-text strong {
+		font-weight: 600;
 	}
 
 	.additional-prompt-section {
@@ -707,6 +869,7 @@
 		align-items: center;
 		gap: 1rem;
 		margin-bottom: 1rem;
+		position: relative;
 	}
 
 	.slide-thumbnail {
@@ -883,5 +1046,88 @@
 
 	.new-job-btn {
 		margin-top: 2rem;
+	}
+
+	/* 目安時間設定スタイル */
+	.duration-setting {
+		margin: 1rem 0;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.duration-setting label {
+		font-weight: 500;
+		color: #374151;
+	}
+
+	.duration-setting input {
+		width: 80px;
+		padding: 0.5rem;
+		border: 1px solid #d1d5db;
+		border-radius: 6px;
+		font-size: 1rem;
+		text-align: center;
+	}
+
+	.duration-setting span {
+		color: #6b7280;
+	}
+
+	/* 指示履歴スタイル */
+	.history-toggle {
+		background-color: #e0f2fe;
+		color: #0369a1;
+		border: 1px solid #7dd3fc;
+		padding: 0.25rem 0.75rem;
+		border-radius: 6px;
+		font-size: 0.875rem;
+		cursor: pointer;
+		transition: all 0.2s ease;
+		margin-left: auto;
+	}
+
+	.history-toggle:hover {
+		background-color: #bae6fd;
+		border-color: #38bdf8;
+	}
+
+	.instruction-history {
+		background-color: #f0f9ff;
+		border: 1px solid #bae6fd;
+		border-radius: 8px;
+		padding: 1rem;
+		margin: 1rem 0;
+	}
+
+	.instruction-history h5 {
+		margin: 0 0 0.75rem 0;
+		color: #0369a1;
+		font-size: 0.9rem;
+		font-weight: 600;
+	}
+
+	.history-item {
+		background-color: white;
+		border: 1px solid #e0e7ff;
+		border-radius: 6px;
+		padding: 0.75rem;
+		margin-bottom: 0.5rem;
+	}
+
+	.history-item:last-child {
+		margin-bottom: 0;
+	}
+
+	.history-timestamp {
+		font-size: 0.75rem;
+		color: #6b7280;
+		margin-bottom: 0.25rem;
+	}
+
+	.history-instruction {
+		color: #1f2937;
+		font-size: 0.875rem;
+		line-height: 1.5;
 	}
 </style>

@@ -1,5 +1,6 @@
 import os
 import json
+import re
 from typing import List, Dict, Optional
 from pathlib import Path
 from openai import OpenAI
@@ -79,10 +80,14 @@ class DialogueGenerator:
             # エラー時は全スライド
             return list(range(1, total_slides + 1))
         
-    def extract_text_from_slides(self, slide_texts: List[str], additional_prompt: str = None, progress_callback=None) -> Dict[str, List[Dict]]:
+    def extract_text_from_slides(self, slide_texts: List[str], additional_prompt: str = None, progress_callback=None, target_duration: int = 10) -> Dict[str, List[Dict]]:
         """スライドのテキストから対話形式のナレーションを生成（スライドごとに個別生成）"""
         
         dialogue_data = {}
+        
+        # 各スライドの目安時間を計算（秒に変換）
+        target_seconds = target_duration * 60
+        seconds_per_slide = target_seconds / len(slide_texts)
         
         # 各スライドについて個別に対話を生成
         for i, slide_text in enumerate(slide_texts):
@@ -107,17 +112,22 @@ class DialogueGenerator:
                 slide_text=slide_text,
                 total_slides=len(slide_texts),
                 previous_dialogues=previous_dialogues,
-                additional_prompt=additional_prompt
+                additional_prompt=additional_prompt,
+                target_seconds_per_slide=seconds_per_slide
             )
             dialogue_data[slide_key] = slide_dialogue
         
         return dialogue_data
     
-    def regenerate_specific_slides(self, slide_texts: List[str], existing_dialogues: Dict[str, List[Dict]], slide_numbers: List[int], additional_prompt: str = None, progress_callback=None) -> Dict[str, List[Dict]]:
+    def regenerate_specific_slides(self, slide_texts: List[str], existing_dialogues: Dict[str, List[Dict]], slide_numbers: List[int], additional_prompt: str = None, progress_callback=None, instruction_history=None, target_duration: int = 10) -> Dict[str, List[Dict]]:
         """特定のスライドのみ再生成"""
         
         # 既存の対話データをコピー
         dialogue_data = existing_dialogues.copy()
+        
+        # 各スライドの目安時間を計算（秒に変換）
+        target_seconds = target_duration * 60
+        seconds_per_slide = target_seconds / len(slide_texts)
         
         # 指定されたスライドのみ再生成
         for slide_num in slide_numbers:
@@ -143,19 +153,30 @@ class DialogueGenerator:
                 if prev_key in dialogue_data:
                     previous_dialogues[prev_key] = dialogue_data[prev_key]
             
+            # 履歴がある場合は、過去の指示と組み合わせる
+            if instruction_history:
+                combined_prompt = instruction_history.get_combined_instruction(slide_num, additional_prompt)
+            else:
+                combined_prompt = additional_prompt
+            
             slide_dialogue = self.generate_dialogue_for_single_slide(
                 slide_number=slide_num,
                 slide_text=slide_texts[i],
                 total_slides=len(slide_texts),
                 previous_dialogues=previous_dialogues,
-                additional_prompt=additional_prompt
+                additional_prompt=combined_prompt,
+                target_seconds_per_slide=seconds_per_slide
             )
             dialogue_data[slide_key] = slide_dialogue
         
         return dialogue_data
     
-    def generate_dialogue_for_single_slide(self, slide_number: int, slide_text: str, total_slides: int, previous_dialogues: Dict = None, additional_prompt: str = None, max_retries: int = 3) -> List[Dict]:
+    def generate_dialogue_for_single_slide(self, slide_number: int, slide_text: str, total_slides: int, previous_dialogues: Dict = None, additional_prompt: str = None, target_seconds_per_slide: float = 30, max_retries: int = 3) -> List[Dict]:
         """単一スライドの対話を生成"""
+        
+        # スライドの種類を早めに判定（表紙・表題スライドかどうか）
+        is_title_slide = False
+        min_dialogues_for_this_slide = 8  # デフォルト値
         
         system_prompt = """あなたは魅力的な教育動画を作成するプロの脚本家です。四国めたんとずんだもんによる楽しい対話を書いてください。
 
@@ -174,16 +195,34 @@ class DialogueGenerator:
 8. 具体的な数字、事例、メリット・デメリットなどを積極的に話題に含める
 9. 技術的な内容も分かりやすい例え話で説明する
 
+重要な制約：
+10. キャラクターは絶対に「スライド」という言葉を使わないでください
+11. 「次のページ」「この図」「ここに書いてある」など、プレゼン資料への直接的な言及も避けてください
+12. あくまで二人が知識を共有する自然な会話として展開してください
+13. 最初のトピック以外では「こんにちは」「今日は」「今回は」などの挨拶は使わないでください
+
+音声合成用の重要なルール：
+14. 英単語は必ずカタカナで表記してください（音声合成エンジンが正しく読み上げるため）
+15. 例：
+    - Claude Code → クロードコード
+    - AI → エーアイ
+    - ChatGPT → チャットジーピーティー
+    - Google → グーグル
+    - API → エーピーアイ
+    - GitHub → ギットハブ
+    - Python → パイソン
+16. 固有名詞や製品名も日本語の音声として自然に聞こえるようカタカナ表記にしてください
+
 出力形式：
 必ず以下のような有効なJSON形式で出力してください。コードブロックや余計な文字は含めないでください。
 {
   "dialogue": [
-    {"speaker": "metan", "text": "今日はClaude Codeの魅力について話すよ！"},
-    {"speaker": "zundamon", "text": "おお、楽しみなのだ！Claude Codeって何がすごいのだ？"}
+    {"speaker": "metan", "text": "今日はクロードコードの魅力について話すよ！"},
+    {"speaker": "zundamon", "text": "おお、楽しみなのだ！クロードコードって何がすごいのだ？"}
   ]
 }"""
         
-        user_prompt = f"""スライド{slide_number}/{total_slides}の内容について、めたんとずんだもんの魅力的な対話を作成してください。
+        user_prompt = f"""トピック{slide_number}/{total_slides}の内容について、めたんとずんだもんの魅力的な対話を作成してください。
 
 """
         
@@ -199,21 +238,69 @@ class DialogueGenerator:
                     user_prompt += f"- {dialogue['speaker']}: {dialogue['text']}\n"
             user_prompt += "\n"
         
-        user_prompt += f"""現在のスライド{slide_number}の内容：
+        user_prompt += f"""現在扱うトピック（{slide_number}番目）の内容：
 """
         user_prompt += slide_text
-        user_prompt += """
+        
+        # スライドの種類を判定（表紙・表題スライドかどうか）
+        is_title_slide = False
+        if slide_number == 1:  # 最初のスライド
+            is_title_slide = True
+        elif slide_number == total_slides:  # 最後のスライド（まとめや終了スライドの可能性）
+            # テキストに「ありがとう」「終」「まとめ」「おわり」などが含まれるかチェック
+            end_keywords = ['ありがとう', '終', 'まとめ', 'おわり', 'Thank', 'End', 'Summary', 'Conclusion']
+            if any(keyword in slide_text for keyword in end_keywords):
+                is_title_slide = True
+        elif len(slide_text.strip()) < 100:  # テキストが短い（タイトルのみの可能性）
+            is_title_slide = True
+        
+        # 対話回数の設定（目安時間から逆算）
+        # 日本語の読み上げ速度を約330文字/分として計算
+        chars_per_second = 5.5
+        # 各発話の平均文字数を40文字と仮定
+        avg_chars_per_utterance = 40
+        # スライド間の間隔0.5秒、発話間の間隔0.3秒を考慮
+        pause_time = 0.5 + (target_seconds_per_slide / 10) * 0.3  # 概算
+        
+        # 利用可能な秒数から発話数を計算
+        available_seconds = target_seconds_per_slide - pause_time
+        estimated_utterances = int((available_seconds * chars_per_second) / avg_chars_per_utterance)
+        
+        # 最小値と最大値を設定
+        if is_title_slide:
+            min_utterances = max(4, min(6, estimated_utterances))
+            max_utterances = min(6, estimated_utterances)
+            dialogue_count_instruction = f"{min_utterances}〜{max_utterances}個の発話で簡潔に"
+            min_dialogues_for_this_slide = min_utterances
+        else:
+            min_utterances = max(8, int(estimated_utterances * 0.8))
+            max_utterances = int(estimated_utterances * 1.2)
+            dialogue_count_instruction = f"{min_utterances}〜{max_utterances}個の発話を作成（目安時間約{int(target_seconds_per_slide)}秒）"
+            min_dialogues_for_this_slide = min_utterances
+            
+        # 追加プロンプトで対話回数が明示的に指定されている場合は上書き
+        if additional_prompt and any(word in additional_prompt for word in ['短く', '少なく', '2回', '3回', '4回']):
+            match = re.search(r'(\d+)回', additional_prompt)
+            if match:
+                count = int(match.group(1))
+                dialogue_count_instruction = f"{count}回の掛け合い（{count*2}個の発話）を作成"
+                min_dialogues_for_this_slide = count * 2
+            else:
+                dialogue_count_instruction = "4〜6回の会話のやり取りを作成"
+                min_dialogues_for_this_slide = 4
+        
+        user_prompt += f"""
 
 重要な要望：
-- このスライドについて8〜12回の会話のやり取りを作成（最低でも8回以上）
+- このトピックについて{dialogue_count_instruction}
 - 会話は具体的で内容が濃いものにする（単なる相槌ではなく、情報を含む発話）
 - ずんだもんは「〜なのだ」語尾を必ず使用し、具体的な質問や感想を述べる
 - めたんは専門知識を噛み砕いて、例え話や具体例を交えて丁寧に説明
 - 過去の対話内容がある場合は、その文脈を踏まえて自然な流れで会話を続ける
-- 前のスライドで説明した内容は「さっき話した〜」のように参照する
+- 前の話題で説明した内容は「さっき話した〜」のように参照する
 - 話題の重複を避け、新しい情報や視点を提供する
 - 以下の要素を必ず含める：
-  * スライドの主要なポイントの詳細な説明
+  * トピックの主要なポイントの詳細な説明
   * 具体的な例や応用例の紹介
   * ずんだもんからの掘り下げた質問
   * めたんによる分かりやすい回答
@@ -221,7 +308,17 @@ class DialogueGenerator:
 - 単純な「なるほど」「そうなのだ」だけの返答は避ける
 - 視聴者が理解を深められるよう、段階的に説明を展開
 
-必ず有効なJSON形式（{"dialogue": [...]}の形式）で出力してください。"""
+{f'''特別な注意：
+これは表紙・タイトルページなので、簡潔に導入してください：
+- 挨拶と今日のテーマの紹介に焦点を当てる
+- 詳細は後で説明することを示唆する（「後のスライド」とは言わない）
+- 期待感を高める内容にする''' if is_title_slide else '''特別な注意：
+これは{slide_number}番目のトピックです：
+- 「こんにちは」「今日は」「今回は」などの挨拶は絶対に使わないでください
+- 前のトピックから自然に話を続けてください
+- いきなり本題から入って構いません'''}
+
+必ず有効なJSON形式（{{"dialogue": [...]}}の形式）で出力してください。"""
         
         # 追加プロンプトがある場合は付加
         if additional_prompt:
@@ -268,15 +365,16 @@ class DialogueGenerator:
                     else:
                         dialogue_list = parsed_content
                     
-                    if isinstance(dialogue_list, list) and len(dialogue_list) >= 8:
+                    # 上で設定した最小対話数を使用
+                    if isinstance(dialogue_list, list) and len(dialogue_list) >= min_dialogues_for_this_slide:
                         print(f"スライド{slide_number}の対話生成成功（{len(dialogue_list)}件の対話）")
                         return dialogue_list
                     else:
-                        print(f"スライド{slide_number}の対話が不十分です（{len(dialogue_list)}件）（試行{attempt+1}/{max_retries}）")
+                        print(f"スライド{slide_number}の対話が不十分です（{len(dialogue_list)}件、最小{min_dialogues_for_this_slide}件必要）（試行{attempt+1}/{max_retries}）")
                         if attempt < max_retries - 1:
                             continue
                         else:
-                            raise Exception(f"スライド{slide_number}の対話生成に失敗しました：対話数が不十分（{len(dialogue_list)}件）")
+                            raise Exception(f"スライド{slide_number}の対話生成に失敗しました：対話数が不十分（{len(dialogue_list)}件、最小{min_dialogues_for_this_slide}件必要）")
                         
                 except json.JSONDecodeError as e:
                     print(f"スライド{slide_number}のJSON解析エラー: {e}（試行{attempt+1}/{max_retries}）")
@@ -313,17 +411,28 @@ class DialogueGenerator:
 3. めたんは専門知識を分かりやすく、時には例え話で説明する
 4. 1つの発話は2〜4文程度（内容を充実させるため、短すぎないように）
 5. 感嘆詞（「へえ〜」「すごい！」「なるほど」など）を自然に入れる
-6. 各スライドで新しい発見や驚きがある展開にする
+6. 各トピックで新しい発見や驚きがある展開にする
 7. 聞き手（視聴者）が「もっと知りたい」と思うような会話にする
 8. 具体的な数字、事例、メリット・デメリットなどを積極的に話題に含める
 9. 技術的な内容も分かりやすい例え話で説明する
+
+重要な制約：
+10. キャラクターは絶対に「スライド」という言葉を使わないでください
+11. 「次のページ」「この図」「ここに書いてある」など、プレゼン資料への直接的な言及も避けてください
+12. あくまで二人が知識を共有する自然な会話として展開してください
+13. 最初のトピック以外では「こんにちは」「今日は」「今回は」などの挨拶は使わないでください
+
+音声合成用の重要なルール：
+14. 英単語は必ずカタカナで表記してください（音声合成エンジンが正しく読み上げるため）
+15. 例：Claude Code → クロードコード、AI → エーアイ、ChatGPT → チャットジーピーティー、Google → グーグル、API → エーピーアイ
+16. 固有名詞や製品名も日本語の音声として自然に聞こえるようカタカナ表記にしてください
 
 出力形式：
 必ず以下のような有効なJSON形式で出力してください。コードブロックや余計な文字は含めないでください。
 {
   "slide_1": [
-    {"speaker": "metan", "text": "今日はClaude Codeの魅力について話すよ！"},
-    {"speaker": "zundamon", "text": "おお、楽しみなのだ！Claude Codeって何がすごいのだ？"}
+    {"speaker": "metan", "text": "今日はクロードコードの魅力について話すよ！"},
+    {"speaker": "zundamon", "text": "おお、楽しみなのだ！クロードコードって何がすごいのだ？"}
   ],
   "slide_2": [...]
 }"""
@@ -334,19 +443,19 @@ class DialogueGenerator:
             for i, text in enumerate(slide_texts)
         ])
         
-        user_prompt = """以下のスライド内容を、めたんとずんだもんの魅力的な対話で解説してください。
+        user_prompt = """以下のトピック内容を、めたんとずんだもんの魅力的な対話で解説してください。
 
 """
         user_prompt += slides_content
         user_prompt += """
 
 重要な要望：
-- 各スライドごとに必ず8〜12回の会話のやり取りを作成（最低でも8回以上）
+- 各トピックごとに必ず8〜12回の会話のやり取りを作成（最低でも8回以上）
 - 会話は具体的で内容が濃いものにする（単なる相槌ではなく、情報を含む発話）
 - ずんだもんは「〜なのだ」語尾を必ず使用し、具体的な質問や感想を述べる
 - めたんは専門知識を噛み砕いて、例え話や具体例を交えて丁寧に説明
 - 以下の要素を必ず含める：
-  * スライドの主要なポイントの詳細な説明
+  * トピックの主要なポイントの詳細な説明
   * 具体的な例や応用例の紹介
   * ずんだもんからの掘り下げた質問
   * めたんによる分かりやすい回答

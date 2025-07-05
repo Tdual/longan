@@ -71,10 +71,13 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 async def root():
     return {"message": "Gen Movie API", "version": "1.0.0"}
 
+from fastapi import Form
+
 @app.post("/api/jobs/upload", response_model=JobCreateResponse)
 async def upload_pdf(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    target_duration: int = Form(10)  # デフォルト10分
 ):
     """PDFファイルをアップロードしてジョブを作成"""
     
@@ -104,8 +107,18 @@ async def upload_pdf(
     )
     jobs_db[job_id] = job_status
     
+    # 目安時間をファイルに保存
+    target_duration_file = job_dir / "target_duration.txt"
+    with open(target_duration_file, "w") as f:
+        f.write(str(target_duration))
+    
     # バックグラウンドでPDF変換を実行（本番ではBatchジョブ起動）
-    background_tasks.add_task(convert_pdf_to_slides, job_id, str(pdf_path))
+    def run_in_thread():
+        asyncio.run(convert_pdf_to_slides(job_id, str(pdf_path), target_duration))
+    
+    thread = threading.Thread(target=run_in_thread)
+    thread.daemon = True
+    thread.start()
     
     return JobCreateResponse(
         job_id=job_id,
@@ -306,6 +319,7 @@ async def get_slide_image(job_id: str, slide_number: int):
 async def get_dialogue(job_id: str):
     """生成された対話スクリプトを取得"""
     
+    # 今後はオリジナルデータに直接カタカナが含まれるため、オリジナルを読み込む
     dialogue_path = Path.cwd() / "data" / job_id / "dialogue_narration_original.json"
     
     if not dialogue_path.exists():
@@ -314,7 +328,24 @@ async def get_dialogue(job_id: str):
     with open(dialogue_path, 'r', encoding='utf-8') as f:
         dialogue_data = json.load(f)
     
-    return dialogue_data
+    # 動画時間の概算を計算
+    total_seconds = estimate_video_duration(dialogue_data)
+    
+    return {
+        "dialogue_data": dialogue_data,
+        "estimated_duration": {
+            "seconds": total_seconds,
+            "formatted": format_duration(total_seconds)
+        }
+    }
+
+@app.get("/api/jobs/{job_id}/instruction-history")
+async def get_instruction_history(job_id: str):
+    """指示履歴を取得"""
+    from api.core.instruction_history import InstructionHistory
+    
+    history = InstructionHistory(job_id, Path.cwd())
+    return {"history": history.history}
 
 @app.put("/api/jobs/{job_id}/dialogue")
 async def update_dialogue(
@@ -333,11 +364,11 @@ async def update_dialogue(
     dialogue_path = data_dir / "dialogue_narration_original.json"
     katakana_path = data_dir / "dialogue_narration_katakana.json"
     
-    # オリジナルデータを保存
+    # 受け取ったデータをそのまま保存（AIが既にカタカナで生成）
     with open(dialogue_path, 'w', encoding='utf-8') as f:
         json.dump(request.dialogue_data, f, ensure_ascii=False, indent=2)
     
-    # カタカナ変換版も保存（今は同じデータを保存）
+    # 互換性のためkatakanaファイルも同じ内容で保存
     with open(katakana_path, 'w', encoding='utf-8') as f:
         json.dump(request.dialogue_data, f, ensure_ascii=False, indent=2)
     
@@ -415,7 +446,7 @@ from api.core.audio_generator import AudioGenerator
 from api.core.video_creator import VideoCreator
 
 # バックグラウンドタスク（本番ではAWS Batchで実行）
-async def convert_pdf_to_slides(job_id: str, pdf_path: str):
+async def convert_pdf_to_slides(job_id: str, pdf_path: str, target_duration: int = 10):
     """PDFをスライド画像に変換"""
     try:
         job = jobs_db[job_id]
@@ -433,14 +464,15 @@ async def convert_pdf_to_slides(job_id: str, pdf_path: str):
         # 進捗更新用のコールバック
         def update_progress(message: str, progress: float):
             job.message = message
-            job.progress = 15 + int(progress * 0.05)  # 15-20%の範囲で進捗表示
+            # PDFからスライド変換が15%まで、対話生成が15-95%の範囲
+            job.progress = 15 + int(progress * 0.8)  # 15-95%の範囲で進捗表示
             job.updated_at = datetime.now()
         
-        # 対話データを生成
-        dialogue_path = processor.generate_dialogue_from_pdf(pdf_path, progress_callback=update_progress)
+        # 対話データを生成（目安時間を渡す）
+        dialogue_path = processor.generate_dialogue_from_pdf(pdf_path, progress_callback=update_progress, target_duration=target_duration)
         
         job.status = "slides_ready"
-        job.progress = 20
+        job.progress = 100
         job.message = f"スライド変換と対話生成が完了しました（{slide_count}枚）"
         job.updated_at = datetime.now()
         
@@ -477,12 +509,21 @@ async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] =
         # 進捗更新用のコールバック
         def update_progress(message: str, progress: float):
             job.message = message
-            job.progress = 50 + int(progress * 0.1)  # 50-60%の範囲で進捗表示
+            # 再生成の場合は0-95%の範囲で進捗表示
+            job.progress = int(progress * 0.95)
             job.updated_at = datetime.now()
+        
+        # 目安時間を読み込む
+        target_duration = 10  # デフォルト
+        target_duration_file = job_dir / "target_duration.txt"
+        if target_duration_file.exists():
+            with open(target_duration_file, "r") as f:
+                target_duration = int(f.read().strip())
         
         if is_regeneration and additional_prompt:
             from api.core.text_extractor import TextExtractor
             from api.core.dialogue_generator import DialogueGenerator
+            from api.core.instruction_history import InstructionHistory
             
             # 再生成の場合、どのスライドを再生成するか判断
             dialogue_generator = DialogueGenerator()
@@ -494,6 +535,10 @@ async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] =
                 additional_prompt, 
                 len(slide_texts)
             )
+            
+            # 指示履歴を管理
+            history = InstructionHistory(job_id, Path.cwd())
+            history.add_instruction(target_slides, additional_prompt)
             
             # 既存の対話データを読み込む
             existing_dialogue_path = Path.cwd() / "data" / job_id / "dialogue_narration_original.json"
@@ -509,7 +554,9 @@ async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] =
                 existing_dialogues,
                 target_slides,
                 additional_prompt,
-                progress_callback=update_progress
+                progress_callback=update_progress,
+                instruction_history=history,
+                target_duration=target_duration
             )
             
             # データを保存
@@ -520,25 +567,22 @@ async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] =
             with open(dialogue_path, 'w', encoding='utf-8') as f:
                 json.dump(dialogue_data, f, ensure_ascii=False, indent=2)
             
-            # カタカナ版も保存
-            from api.core.katakana_converter import KatakanaConverter
-            katakana_converter = KatakanaConverter()
-            dialogue_data_katakana = katakana_converter.convert_dialogue_to_katakana(dialogue_data)
-            
+            # 互換性のためkatakanaファイルも同じ内容で保存
             katakana_path = data_dir / "dialogue_narration_katakana.json"
             with open(katakana_path, 'w', encoding='utf-8') as f:
-                json.dump(dialogue_data_katakana, f, ensure_ascii=False, indent=2)
+                json.dump(dialogue_data, f, ensure_ascii=False, indent=2)
         else:
             # 通常の生成
             dialogue_path = processor.generate_dialogue_from_pdf(
                 pdf_path, 
                 additional_prompt,
-                progress_callback=update_progress
+                progress_callback=update_progress,
+                target_duration=target_duration
             )
         
         # 完了
         job.status = "dialogue_ready"
-        job.progress = 60
+        job.progress = 100
         job.message = "対話スクリプトが生成されました"
         job.updated_at = datetime.now()
         
@@ -672,6 +716,40 @@ async def create_video_task(job_id: str, slide_numbers: Optional[List[int]]):
         job.status = "failed"
         job.error = str(e)
         job.updated_at = datetime.now()
+
+# 動画時間の概算関数
+def estimate_video_duration(dialogue_data: Dict[str, List[Dict]]) -> float:
+    """対話データから動画時間を概算"""
+    total_chars = 0
+    total_dialogues = 0
+    
+    for slide_key, dialogues in dialogue_data.items():
+        for dialogue in dialogues:
+            text = dialogue.get("text", "")
+            total_chars += len(text)
+            total_dialogues += 1
+    
+    # 概算:
+    # - 日本語の読み上げ速度: 約300-350文字/分（VOICEVOXのデフォルト速度）
+    # - スライド間の間隔: 0.5秒 × スライド数
+    # - 対話間の間隔: 0.3秒 × 対話数
+    
+    chars_per_second = 5.5  # 330文字/分 ÷ 60秒
+    text_duration = total_chars / chars_per_second
+    
+    slide_count = len(dialogue_data)
+    slide_transition_duration = slide_count * 0.5
+    dialogue_pause_duration = total_dialogues * 0.3
+    
+    total_seconds = text_duration + slide_transition_duration + dialogue_pause_duration
+    
+    return round(total_seconds, 1)
+
+def format_duration(seconds: float) -> str:
+    """秒数を分:秒形式にフォーマット"""
+    minutes = int(seconds // 60)
+    remaining_seconds = int(seconds % 60)
+    return f"{minutes}分{remaining_seconds}秒"
 
 if __name__ == "__main__":
     import uvicorn

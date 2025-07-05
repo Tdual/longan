@@ -103,8 +103,12 @@ test_data/
 
 # Test scripts
 test_*.sh
+test_*.js
 
 # Temporary Docker files
 Dockerfile.simple
 Dockerfile.test
 docker-compose.simple.yml
+
+# Bug reports and recommendations
+bug_report_and_recommendations.md

@@ -38,7 +38,8 @@ export const handle: Handle = async ({ event, resolve }) => {
                 headers: headers,
                 body: event.request.method !== 'GET' && event.request.method !== 'HEAD' ? body : undefined,
                 // @ts-ignore
-                duplex: 'half' // streaming bodyのために必要
+                duplex: 'half', // streaming bodyのために必要
+                signal: AbortSignal.timeout(300000) // 5分のタイムアウト（大きなPDFの処理用）
             });
 
             // レスポンスヘッダーをコピー
