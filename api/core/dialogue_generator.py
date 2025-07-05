@@ -39,7 +39,7 @@ class DialogueGenerator:
         
         return dialogue_data
     
-    def generate_dialogue_for_single_slide(self, slide_number: int, slide_text: str, total_slides: int, additional_prompt: str = None) -> List[Dict]:
+    def generate_dialogue_for_single_slide(self, slide_number: int, slide_text: str, total_slides: int, additional_prompt: str = None, max_retries: int = 3) -> List[Dict]:
         """単一スライドの対話を生成"""
         
         system_prompt = """あなたは魅力的な教育動画を作成するプロの脚本家です。四国めたんとずんだもんによる楽しい対話を書いてください。
@@ -93,69 +93,74 @@ class DialogueGenerator:
         if additional_prompt:
             user_prompt += f"\n\n追加の指示：\n{additional_prompt}"
 
-        try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.8,
-                max_tokens=3000,  # 単一スライドなので少なめでOK
-                response_format={"type": "json_object"}
-            )
-            
-            # レスポンスをパース
-            content = response.choices[0].message.content
-            if not content:
-                print(f"スライド{slide_number}の応答が空です")
-                return self._get_default_slide_dialogue(slide_number)
-            
-            # JSONとして解析（配列として返されるはずだが、オブジェクトで返される場合の対処）
+        # リトライループ
+        for attempt in range(max_retries):
             try:
-                parsed_content = json.loads(content)
+                response = self.client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.8,
+                    max_tokens=3000,  # 単一スライドなので少なめでOK
+                    response_format={"type": "json_object"}
+                )
                 
-                # もし配列でなくオブジェクトで返された場合、配列を取り出す
-                if isinstance(parsed_content, dict):
-                    # "dialogue"キーなどがある場合
-                    if "dialogue" in parsed_content:
-                        dialogue_list = parsed_content["dialogue"]
-                    # "slide_1"のようなキーがある場合
-                    elif f"slide_{slide_number}" in parsed_content:
-                        dialogue_list = parsed_content[f"slide_{slide_number}"]
+                # レスポンスをパース
+                content = response.choices[0].message.content
+                if not content:
+                    print(f"スライド{slide_number}の応答が空です（試行{attempt+1}/{max_retries}）")
+                    if attempt < max_retries - 1:
+                        continue
                     else:
-                        # 最初の値を取得
-                        dialogue_list = list(parsed_content.values())[0]
-                else:
-                    dialogue_list = parsed_content
+                        raise Exception(f"スライド{slide_number}の対話生成に失敗しました：応答が空です")
                 
-                if isinstance(dialogue_list, list) and len(dialogue_list) >= 8:
-                    return dialogue_list
-                else:
-                    print(f"スライド{slide_number}の対話が不十分です（{len(dialogue_list)}件）")
-                    return self._get_default_slide_dialogue(slide_number)
+                # JSONとして解析
+                try:
+                    parsed_content = json.loads(content)
                     
-            except json.JSONDecodeError as e:
-                print(f"スライド{slide_number}のJSON解析エラー: {e}")
-                print(f"レスポンス内容: {content[:500]}...")
-                return self._get_default_slide_dialogue(slide_number)
-            
-        except Exception as e:
-            print(f"スライド{slide_number}の対話生成エラー: {e}")
-            return self._get_default_slide_dialogue(slide_number)
+                    # もし配列でなくオブジェクトで返された場合、配列を取り出す
+                    if isinstance(parsed_content, dict):
+                        # "dialogue"キーなどがある場合
+                        if "dialogue" in parsed_content:
+                            dialogue_list = parsed_content["dialogue"]
+                        # "slide_1"のようなキーがある場合
+                        elif f"slide_{slide_number}" in parsed_content:
+                            dialogue_list = parsed_content[f"slide_{slide_number}"]
+                        else:
+                            # 最初の値を取得
+                            dialogue_list = list(parsed_content.values())[0]
+                    else:
+                        dialogue_list = parsed_content
+                    
+                    if isinstance(dialogue_list, list) and len(dialogue_list) >= 8:
+                        print(f"スライド{slide_number}の対話生成成功（{len(dialogue_list)}件の対話）")
+                        return dialogue_list
+                    else:
+                        print(f"スライド{slide_number}の対話が不十分です（{len(dialogue_list)}件）（試行{attempt+1}/{max_retries}）")
+                        if attempt < max_retries - 1:
+                            continue
+                        else:
+                            raise Exception(f"スライド{slide_number}の対話生成に失敗しました：対話数が不十分（{len(dialogue_list)}件）")
+                        
+                except json.JSONDecodeError as e:
+                    print(f"スライド{slide_number}のJSON解析エラー: {e}（試行{attempt+1}/{max_retries}）")
+                    print(f"レスポンス内容: {content[:500]}...")
+                    if attempt < max_retries - 1:
+                        continue
+                    else:
+                        raise Exception(f"スライド{slide_number}の対話生成に失敗しました：JSON解析エラー - {str(e)}")
+                
+            except Exception as e:
+                print(f"スライド{slide_number}の対話生成エラー: {e}（試行{attempt+1}/{max_retries}）")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(2)  # リトライ前に2秒待機
+                    continue
+                else:
+                    raise Exception(f"スライド{slide_number}の対話生成に失敗しました：{str(e)}")
     
-    def _get_default_slide_dialogue(self, slide_number: int) -> List[Dict]:
-        """単一スライドのデフォルト対話を生成"""
-        return [
-            {"speaker": "metan", "text": f"スライド{slide_number}の内容を説明します"},
-            {"speaker": "zundamon", "text": "どんな内容なのだ？"},
-            {"speaker": "metan", "text": "このスライドでは重要なポイントを扱っています"},
-            {"speaker": "zundamon", "text": "もっと詳しく教えてほしいのだ！"},
-            {"speaker": "metan", "text": "わかりました。順を追って説明しますね"},
-            {"speaker": "zundamon", "text": "楽しみなのだ！"},
-            {"speaker": "metan", "text": "まず最初のポイントから始めましょう"},
-            {"speaker": "zundamon", "text": "しっかり聞くのだ！"}
-        ]
     
     def extract_text_from_slides_batch(self, slide_texts: List[str], additional_prompt: str = None) -> Dict[str, List[Dict]]:
         """スライドのテキストから対話形式のナレーションを生成"""
@@ -232,8 +237,7 @@ class DialogueGenerator:
             # レスポンスをパース
             content = response.choices[0].message.content
             if not content:
-                print("OpenAIからの応答が空です")
-                return self._get_default_dialogue(len(slide_texts))
+                raise Exception("OpenAIからの応答が空です")
             
             try:
                 dialogue_data = json.loads(content)
@@ -242,32 +246,19 @@ class DialogueGenerator:
                 if all(key in dialogue_data for key in expected_keys):
                     return dialogue_data
                 else:
-                    print("対話データのキーが不足しています")
-                    return self._get_default_dialogue(len(slide_texts))
+                    missing_keys = [key for key in expected_keys if key not in dialogue_data]
+                    raise Exception(f"対話データのキーが不足しています。不足キー: {missing_keys}")
             except json.JSONDecodeError as e:
                 print(f"JSON解析エラー: {e}")
                 print(f"レスポンス内容: {content[:500]}...")  # 最初の500文字を表示
-                return self._get_default_dialogue(len(slide_texts))
+                raise Exception(f"対話生成に失敗しました：JSON解析エラー - {str(e)}")
             
         except Exception as e:
             print(f"対話生成エラー: {e}")
             import traceback
             traceback.print_exc()
-            # エラー時はデフォルトの対話を返す
-            return self._get_default_dialogue(len(slide_texts))
+            raise Exception(f"対話生成に失敗しました：{str(e)}")
     
-    def _get_default_dialogue(self, num_slides: int) -> Dict[str, List[Dict]]:
-        """デフォルトの対話データを生成"""
-        dialogue_data = {}
-        
-        for i in range(num_slides):
-            slide_key = f"slide_{i+1}"
-            dialogue_data[slide_key] = [
-                {"speaker": "metan", "text": f"スライド{i+1}の内容を説明します"},
-                {"speaker": "zundamon", "text": "なるほどなのだ"},
-            ]
-        
-        return dialogue_data
     
     def save_dialogue_data(self, dialogue_data: Dict, output_path: str):
         """対話データを保存"""
