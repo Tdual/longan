@@ -74,8 +74,8 @@
 				progress: 0
 			};
 
-			// 対話生成を開始
-			await generateDialogue(result.job_id);
+			// ステータス監視開始（対話生成は既にサーバー側で行われる）
+			pollJobStatus(result.job_id);
 			
 		} catch (error) {
 			console.error('エラー:', error);

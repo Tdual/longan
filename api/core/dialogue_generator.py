@@ -27,7 +27,10 @@ class DialogueGenerator:
             
             # 進捗を通知
             if progress_callback:
-                progress_callback(f"スライド{i+1}/{len(slide_texts)}の対話を生成中...", (i / len(slide_texts)) * 100)
+                try:
+                    progress_callback(f"スライド{i+1}/{len(slide_texts)}の対話を生成中...", (i / len(slide_texts)) * 100)
+                except Exception as e:
+                    print(f"進捗コールバックエラー: {e}")
             
             slide_dialogue = self.generate_dialogue_for_single_slide(
                 slide_number=i+1,
@@ -153,7 +156,9 @@ class DialogueGenerator:
                         raise Exception(f"スライド{slide_number}の対話生成に失敗しました：JSON解析エラー - {str(e)}")
                 
             except Exception as e:
+                import traceback
                 print(f"スライド{slide_number}の対話生成エラー: {e}（試行{attempt+1}/{max_retries}）")
+                print(f"エラー詳細: {traceback.format_exc()}")
                 if attempt < max_retries - 1:
                     import time
                     time.sleep(2)  # リトライ前に2秒待機
@@ -250,7 +255,7 @@ class DialogueGenerator:
                     raise Exception(f"対話データのキーが不足しています。不足キー: {missing_keys}")
             except json.JSONDecodeError as e:
                 print(f"JSON解析エラー: {e}")
-                print(f"レスポンス内容: {content[:500]}...")  # 最初の500文字を表示
+                print(f"レスポンス内容: {repr(content[:500])}...")  # 最初の500文字を表示
                 raise Exception(f"対話生成に失敗しました：JSON解析エラー - {str(e)}")
             
         except Exception as e:

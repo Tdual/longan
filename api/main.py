@@ -234,7 +234,7 @@ async def generate_dialogue_only(
     
     job = jobs_db[job_id]
     
-    if job.status != "slides_ready":
+    if job.status not in ["slides_ready", "dialogue_ready"]:
         raise HTTPException(
             status_code=400, 
             detail="スライド変換が完了していません"
@@ -432,6 +432,9 @@ async def convert_pdf_to_slides(job_id: str, pdf_path: str):
         job.updated_at = datetime.now()
         
     except Exception as e:
+        import traceback
+        error_msg = f"{str(e)}\n{traceback.format_exc()}"
+        print(f"Error in convert_pdf_to_slides: {error_msg}")
         job = jobs_db[job_id]
         job.status = "failed"
         job.error = str(e)
