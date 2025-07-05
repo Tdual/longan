@@ -11,10 +11,27 @@
 		error?: string;
 	}
 
+	interface DialogueData {
+		[key: string]: Array<{
+			speaker: string;
+			text: string;
+		}>;
+	}
+
+	interface Slide {
+		slide_number: number;
+		url: string;
+	}
+
 	let selectedFile: File | null = null;
 	let currentJob: Job | null = null;
 	let isUploading = false;
 	let dragover = false;
+	let dialogueData: DialogueData | null = null;
+	let editingDialogue = false;
+	let additionalPrompt = '';
+	let currentStep: 'upload' | 'dialogue' | 'video' = 'upload';
+	let slides: Slide[] = [];
 
 	async function handleFileSelect(event: Event) {
 		const target = event.target as HTMLInputElement;
@@ -57,8 +74,8 @@
 				progress: 0
 			};
 
-			// 処理開始
-			await startGeneration(result.job_id);
+			// 対話生成を開始
+			await generateDialogue(result.job_id);
 			
 		} catch (error) {
 			console.error('エラー:', error);
@@ -68,9 +85,41 @@
 		}
 	}
 
-	async function startGeneration(jobId: string) {
+	async function generateDialogue(jobId: string, regenerate = false) {
 		try {
-			// 動画生成開始
+			const response = await fetch(getApiUrl(`/api/jobs/${jobId}/generate-dialogue`), {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					job_id: jobId,
+					additional_prompt: regenerate ? additionalPrompt : null
+				})
+			});
+
+			if (!response.ok) {
+				throw new Error('対話生成開始に失敗しました');
+			}
+
+			// 進捗監視開始
+			pollJobStatus(jobId);
+			
+		} catch (error) {
+			console.error('エラー:', error);
+			if (currentJob) {
+				currentJob.error = '対話生成に失敗しました';
+			}
+		}
+	}
+
+	async function startVideoGeneration(jobId: string) {
+		try {
+			// 編集された対話データがあれば保存
+			if (editingDialogue && dialogueData) {
+				await updateDialogue(jobId);
+			}
+
 			const response = await fetch(getApiUrl(`/api/jobs/${jobId}/generate-video`), {
 				method: 'POST',
 				headers: {
@@ -82,6 +131,7 @@
 				throw new Error('動画生成開始に失敗しました');
 			}
 
+			currentStep = 'video';
 			// 進捗監視開始
 			pollJobStatus(jobId);
 			
@@ -90,6 +140,47 @@
 			if (currentJob) {
 				currentJob.error = '動画生成に失敗しました';
 			}
+		}
+	}
+
+	async function loadDialogue(jobId: string) {
+		try {
+			// 対話データを取得
+			const dialogueResponse = await fetch(getApiUrl(`/api/jobs/${jobId}/dialogue`));
+			if (!dialogueResponse.ok) return;
+
+			dialogueData = await dialogueResponse.json();
+			
+			// スライド画像も取得
+			const slidesResponse = await fetch(getApiUrl(`/api/jobs/${jobId}/slides`));
+			if (slidesResponse.ok) {
+				slides = await slidesResponse.json();
+			}
+			
+			currentStep = 'dialogue';
+		} catch (error) {
+			console.error('対話データ取得エラー:', error);
+		}
+	}
+
+	async function updateDialogue(jobId: string) {
+		try {
+			const response = await fetch(getApiUrl(`/api/jobs/${jobId}/dialogue`), {
+				method: 'PUT',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					job_id: jobId,
+					dialogue_data: dialogueData
+				})
+			});
+
+			if (!response.ok) {
+				throw new Error('対話データ更新に失敗しました');
+			}
+		} catch (error) {
+			console.error('対話データ更新エラー:', error);
 		}
 	}
 
@@ -102,7 +193,10 @@
 				const job = await response.json();
 				currentJob = job;
 
-				if (job.status === 'completed' || job.status === 'failed') {
+				if (job.status === 'dialogue_ready' && !dialogueData) {
+					// 対話データを読み込む
+					await loadDialogue(jobId);
+				} else if (job.status === 'completed' || job.status === 'failed') {
 					return; // 完了
 				}
 
@@ -120,6 +214,23 @@
 		selectedFile = null;
 		currentJob = null;
 		isUploading = false;
+		dialogueData = null;
+		editingDialogue = false;
+		additionalPrompt = '';
+		currentStep = 'upload';
+	}
+
+	function addDialogueItem(slideKey: string) {
+		if (!dialogueData) return;
+		dialogueData[slideKey] = [
+			...dialogueData[slideKey],
+			{ speaker: 'metan', text: '' }
+		];
+	}
+
+	function removeDialogueItem(slideKey: string, index: number) {
+		if (!dialogueData) return;
+		dialogueData[slideKey] = dialogueData[slideKey].filter((_, i) => i !== index);
 	}
 </script>
 
@@ -133,11 +244,13 @@
 		<p>PDFスライドからずんだもん＆四国めたんの対話動画を自動生成</p>
 	</header>
 
-	{#if !currentJob}
+	{#if currentStep === 'upload' && !currentJob}
 		<section class="upload-section">
 			<div 
 				class="dropzone" 
 				class:dragover
+				role="button"
+				tabindex="0"
 				on:dragover|preventDefault={() => dragover = true}
 				on:dragleave={() => dragover = false}
 				on:drop={handleDrop}
@@ -173,7 +286,7 @@
 						on:click={uploadAndGenerate}
 						disabled={isUploading}
 					>
-						{isUploading ? '処理中...' : '🎥 動画生成開始'}
+						{isUploading ? '処理中...' : '📝 対話スクリプト生成'}
 					</button>
 					
 					<button class="reset-btn" on:click={resetForm}>
@@ -182,10 +295,86 @@
 				</div>
 			{/if}
 		</section>
-	{:else}
+	{:else if currentStep === 'dialogue' && dialogueData}
+		<section class="dialogue-section">
+			<h3>📝 対話スクリプト編集</h3>
+			
+			<div class="dialogue-controls">
+				<button class="edit-btn" on:click={() => editingDialogue = !editingDialogue}>
+					{editingDialogue ? '編集を終了' : '✏️ スクリプトを編集'}
+				</button>
+				<button class="generate-btn" on:click={() => currentJob && startVideoGeneration(currentJob.job_id)}>
+					🎥 動画生成開始
+				</button>
+			</div>
+
+			<div class="additional-prompt-section">
+				<label for="additional-prompt">AIへの追加指示（再生成時に使用）:</label>
+				<textarea 
+					id="additional-prompt"
+					bind:value={additionalPrompt}
+					placeholder="例: もっとカジュアルな口調にして、技術的な内容も初心者に分かりやすく説明して"
+					rows="3"
+				></textarea>
+				<button 
+					class="regenerate-btn" 
+					on:click={() => currentJob && generateDialogue(currentJob.job_id, true)}
+				>
+					🔄 スクリプト再生成
+				</button>
+			</div>
+
+			<div class="dialogue-list">
+				{#each Object.entries(dialogueData) as [slideKey, dialogues]}
+					<div class="slide-dialogue">
+						<div class="slide-header">
+							{#if slides.length > 0}
+								{@const slideNum = parseInt(slideKey.split('_')[1])}
+								{@const slide = slides.find(s => s.slide_number === slideNum)}
+								{#if slide}
+									<img src={getApiUrl(slide.url)} alt="Slide {slideNum}" class="slide-thumbnail" />
+								{/if}
+							{/if}
+							<h4>{slideKey.replace('_', ' ')}</h4>
+						</div>
+						{#each dialogues as dialogue, index}
+							<div class="dialogue-item">
+								<div class="speaker-label {dialogue.speaker}">
+									{dialogue.speaker === 'metan' ? '四国めたん' : 'ずんだもん'}
+								</div>
+								{#if editingDialogue}
+									<textarea 
+										bind:value={dialogue.text}
+										class="dialogue-text-edit"
+										rows="2"
+									></textarea>
+									<button 
+										class="remove-btn" 
+										on:click={() => removeDialogueItem(slideKey, index)}
+									>
+										✕
+									</button>
+								{:else}
+									<div class="dialogue-text">{dialogue.text}</div>
+								{/if}
+							</div>
+						{/each}
+						{#if editingDialogue}
+							<button 
+								class="add-dialogue-btn" 
+								on:click={() => addDialogueItem(slideKey)}
+							>
+								＋ セリフを追加
+							</button>
+						{/if}
+					</div>
+				{/each}
+			</div>
+		</section>
+	{:else if currentJob}
 		<section class="progress-section">
 			<div class="job-info">
-				<h3>動画生成中...</h3>
+				<h3>{currentStep === 'video' ? '動画生成中...' : '対話スクリプト生成中...'}</h3>
 				<div class="job-id">Job ID: {currentJob.job_id}</div>
 				
 				<div class="progress-bar">
@@ -237,7 +426,7 @@
 
 <style>
 	.container {
-		max-width: 800px;
+		max-width: 1000px;
 		margin: 0 auto;
 		padding: 2rem;
 		font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -349,6 +538,182 @@
 		background-color: #4b5563;
 	}
 
+	/* 対話編集セクション */
+	.dialogue-section {
+		max-width: 100%;
+	}
+
+	.dialogue-controls {
+		display: flex;
+		gap: 1rem;
+		margin-bottom: 2rem;
+	}
+
+	.edit-btn {
+		background-color: #3b82f6;
+		color: white;
+		border: none;
+		padding: 0.75rem 1.5rem;
+		border-radius: 8px;
+		cursor: pointer;
+		transition: background-color 0.3s ease;
+	}
+
+	.edit-btn:hover {
+		background-color: #2563eb;
+	}
+
+	.additional-prompt-section {
+		background-color: #f3f4f6;
+		padding: 1.5rem;
+		border-radius: 8px;
+		margin-bottom: 2rem;
+	}
+
+	.additional-prompt-section label {
+		display: block;
+		font-weight: bold;
+		margin-bottom: 0.5rem;
+		color: #374151;
+	}
+
+	.additional-prompt-section textarea {
+		width: 100%;
+		padding: 0.75rem;
+		border: 1px solid #d1d5db;
+		border-radius: 6px;
+		resize: vertical;
+		font-family: inherit;
+		margin-bottom: 1rem;
+	}
+
+	.regenerate-btn {
+		background-color: #8b5cf6;
+		color: white;
+		border: none;
+		padding: 0.5rem 1rem;
+		border-radius: 6px;
+		cursor: pointer;
+		transition: background-color 0.3s ease;
+	}
+
+	.regenerate-btn:hover {
+		background-color: #7c3aed;
+	}
+
+	.dialogue-list {
+		max-height: 600px;
+		overflow-y: auto;
+		border: 1px solid #e5e7eb;
+		border-radius: 8px;
+		padding: 1rem;
+		background-color: #ffffff;
+	}
+
+	.slide-dialogue {
+		margin-bottom: 2rem;
+		padding-bottom: 1rem;
+		border-bottom: 1px solid #e5e7eb;
+	}
+
+	.slide-dialogue:last-child {
+		border-bottom: none;
+	}
+
+	.slide-header {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		margin-bottom: 1rem;
+	}
+
+	.slide-thumbnail {
+		width: 150px;
+		height: auto;
+		border-radius: 6px;
+		border: 1px solid #e5e7eb;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+	}
+
+	.slide-dialogue h4 {
+		color: #1f2937;
+		text-transform: capitalize;
+	}
+
+	.dialogue-item {
+		display: flex;
+		align-items: flex-start;
+		margin-bottom: 0.75rem;
+		gap: 0.75rem;
+	}
+
+	.speaker-label {
+		min-width: 100px;
+		padding: 0.25rem 0.75rem;
+		border-radius: 4px;
+		font-size: 0.875rem;
+		font-weight: bold;
+	}
+
+	.speaker-label.metan {
+		background-color: #fef3c7;
+		color: #92400e;
+	}
+
+	.speaker-label.zundamon {
+		background-color: #d1fae5;
+		color: #065f46;
+	}
+
+	.dialogue-text {
+		flex: 1;
+		padding: 0.5rem;
+		background-color: #f9fafb;
+		border-radius: 6px;
+		line-height: 1.5;
+	}
+
+	.dialogue-text-edit {
+		flex: 1;
+		padding: 0.5rem;
+		border: 1px solid #d1d5db;
+		border-radius: 6px;
+		resize: vertical;
+		font-family: inherit;
+	}
+
+	.remove-btn {
+		background-color: #ef4444;
+		color: white;
+		border: none;
+		padding: 0.25rem 0.5rem;
+		border-radius: 4px;
+		cursor: pointer;
+		font-size: 0.875rem;
+	}
+
+	.remove-btn:hover {
+		background-color: #dc2626;
+	}
+
+	.add-dialogue-btn {
+		background-color: #f3f4f6;
+		color: #4b5563;
+		border: 1px dashed #9ca3af;
+		padding: 0.5rem 1rem;
+		border-radius: 6px;
+		cursor: pointer;
+		width: 100%;
+		margin-top: 0.5rem;
+		transition: all 0.3s ease;
+	}
+
+	.add-dialogue-btn:hover {
+		background-color: #e5e7eb;
+		border-color: #6b7280;
+	}
+
+	/* 進捗セクション */
 	.progress-section {
 		text-align: center;
 	}

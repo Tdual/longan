@@ -4,7 +4,7 @@ import threading
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
 import uuid
 import json
@@ -37,6 +37,14 @@ class GenerateAudioRequest(BaseModel):
 class CreateVideoRequest(BaseModel):
     job_id: str
     slide_numbers: Optional[List[int]] = None  # 指定しない場合は全スライド
+
+class GenerateDialogueRequest(BaseModel):
+    job_id: str
+    additional_prompt: Optional[str] = None  # AIへの追加指示
+
+class UpdateDialogueRequest(BaseModel):
+    job_id: str
+    dialogue_data: Dict[str, List[Dict]]  # 編集された対話データ
 
 # FastAPIアプリケーション
 app = FastAPI(title="Gen Movie API", version="1.0.0")
@@ -213,6 +221,121 @@ async def download_video(job_id: str):
         filename=f"video_{job_id}.mp4"
     )
 
+@app.post("/api/jobs/{job_id}/generate-dialogue")
+async def generate_dialogue_only(
+    job_id: str,
+    request: GenerateDialogueRequest,
+    background_tasks: BackgroundTasks
+):
+    """対話スクリプトのみを生成（動画は作成しない）"""
+    
+    if job_id not in jobs_db:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    
+    job = jobs_db[job_id]
+    
+    if job.status != "slides_ready":
+        raise HTTPException(
+            status_code=400, 
+            detail="スライド変換が完了していません"
+        )
+    
+    # ステータス更新
+    job.status = "generating_dialogue"
+    job.progress = 30
+    job.message = "対話スクリプトを生成中..."
+    job.updated_at = datetime.now()
+    
+    # バックグラウンドで対話生成
+    def run_in_thread():
+        asyncio.run(generate_dialogue_task(job_id, request.additional_prompt))
+    
+    thread = threading.Thread(target=run_in_thread)
+    thread.daemon = True
+    thread.start()
+    
+    return {"message": "対話スクリプト生成を開始しました", "job_id": job_id}
+
+@app.get("/api/jobs/{job_id}/slides")
+async def get_slides(job_id: str):
+    """スライド画像のリストを取得"""
+    
+    slides_dir = Path.cwd() / "slides" / job_id
+    
+    if not slides_dir.exists():
+        raise HTTPException(status_code=404, detail="スライドが見つかりません")
+    
+    slides = []
+    for slide_path in sorted(slides_dir.glob("slide_*.png")):
+        slide_num = int(slide_path.stem.split("_")[1])
+        slides.append({
+            "slide_number": slide_num,
+            "url": f"/api/jobs/{job_id}/slides/{slide_num}"
+        })
+    
+    return slides
+
+@app.get("/api/jobs/{job_id}/slides/{slide_number}")
+async def get_slide_image(job_id: str, slide_number: int):
+    """特定のスライド画像を取得"""
+    
+    slide_path = Path.cwd() / "slides" / job_id / f"slide_{slide_number:03d}.png"
+    
+    if not slide_path.exists():
+        raise HTTPException(status_code=404, detail="スライド画像が見つかりません")
+    
+    return FileResponse(
+        path=slide_path,
+        media_type="image/png"
+    )
+
+@app.get("/api/jobs/{job_id}/dialogue")
+async def get_dialogue(job_id: str):
+    """生成された対話スクリプトを取得"""
+    
+    dialogue_path = Path.cwd() / "data" / job_id / "dialogue_narration_original.json"
+    
+    if not dialogue_path.exists():
+        raise HTTPException(status_code=404, detail="対話スクリプトが見つかりません")
+    
+    with open(dialogue_path, 'r', encoding='utf-8') as f:
+        dialogue_data = json.load(f)
+    
+    return dialogue_data
+
+@app.put("/api/jobs/{job_id}/dialogue")
+async def update_dialogue(
+    job_id: str,
+    request: UpdateDialogueRequest
+):
+    """対話スクリプトを更新"""
+    
+    if job_id not in jobs_db:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    
+    # 対話データを保存
+    data_dir = Path.cwd() / "data" / job_id
+    data_dir.mkdir(exist_ok=True)
+    
+    dialogue_path = data_dir / "dialogue_narration_original.json"
+    katakana_path = data_dir / "dialogue_narration_katakana.json"
+    
+    # オリジナルデータを保存
+    with open(dialogue_path, 'w', encoding='utf-8') as f:
+        json.dump(request.dialogue_data, f, ensure_ascii=False, indent=2)
+    
+    # カタカナ変換版も保存（今は同じデータを保存）
+    with open(katakana_path, 'w', encoding='utf-8') as f:
+        json.dump(request.dialogue_data, f, ensure_ascii=False, indent=2)
+    
+    # ジョブステータスを更新
+    job = jobs_db[job_id]
+    job.status = "dialogue_ready"
+    job.message = "対話スクリプトが更新されました"
+    job.updated_at = datetime.now()
+    
+    return {"message": "対話スクリプトを更新しました"}
+
 @app.post("/api/jobs/{job_id}/generate-video")
 async def generate_video_complete(
     job_id: str,
@@ -225,7 +348,7 @@ async def generate_video_complete(
     
     job = jobs_db[job_id]
     
-    if job.status not in ["pending", "slides_ready"]:
+    if job.status not in ["pending", "slides_ready", "dialogue_ready"]:
         raise HTTPException(
             status_code=400, 
             detail="ジョブが適切な状態ではありません"
@@ -294,12 +417,63 @@ async def convert_pdf_to_slides(job_id: str, pdf_path: str):
         job.progress = 15
         job.updated_at = datetime.now()
         
+        # 進捗更新用のコールバック
+        def update_progress(message: str, progress: float):
+            job.message = message
+            job.progress = 15 + int(progress * 0.05)  # 15-20%の範囲で進捗表示
+            job.updated_at = datetime.now()
+        
         # 対話データを生成
-        dialogue_path = processor.generate_dialogue_from_pdf(pdf_path)
+        dialogue_path = processor.generate_dialogue_from_pdf(pdf_path, progress_callback=update_progress)
         
         job.status = "slides_ready"
         job.progress = 20
         job.message = f"スライド変換と対話生成が完了しました（{slide_count}枚）"
+        job.updated_at = datetime.now()
+        
+    except Exception as e:
+        job = jobs_db[job_id]
+        job.status = "failed"
+        job.error = str(e)
+        job.updated_at = datetime.now()
+
+async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] = None):
+    """対話スクリプトのみを生成するタスク"""
+    try:
+        job = jobs_db[job_id]
+        
+        # PDFファイルパスを取得
+        job_dir = UPLOAD_DIR / job_id
+        pdf_files = list(job_dir.glob("*.pdf"))
+        if not pdf_files:
+            raise Exception("PDFファイルが見つかりません")
+        
+        pdf_path = str(pdf_files[0])
+        
+        # PDFを処理（スライドは既に生成済みの場合はスキップ）
+        processor = PDFProcessor(job_id, Path.cwd())
+        
+        # 対話データ生成（追加プロンプトがあれば渡す）
+        job.message = "対話スクリプトを生成中..."
+        job.progress = 50
+        job.updated_at = datetime.now()
+        
+        # 進捗更新用のコールバック
+        def update_progress(message: str, progress: float):
+            job.message = message
+            job.progress = 50 + int(progress * 0.1)  # 50-60%の範囲で進捗表示
+            job.updated_at = datetime.now()
+        
+        dialogue_path = processor.generate_dialogue_from_pdf(
+            pdf_path, 
+            additional_prompt,
+            progress_callback=update_progress
+        )
+        
+        # 完了
+        job.status = "dialogue_ready"
+        job.progress = 60
+        job.message = "対話スクリプトが生成されました"
         job.updated_at = datetime.now()
         
     except Exception as e:
@@ -335,7 +509,13 @@ async def generate_complete_video(job_id: str):
         job.progress = 40
         job.updated_at = datetime.now()
         
-        dialogue_path = processor.generate_dialogue_from_pdf(pdf_path)
+        # 進捗更新用のコールバック
+        def update_progress(message: str, progress: float):
+            job.message = message
+            job.progress = 40 + int(progress * 0.2)  # 40-60%の範囲で進捗表示
+            job.updated_at = datetime.now()
+        
+        dialogue_path = processor.generate_dialogue_from_pdf(pdf_path, progress_callback=update_progress)
         
         # 3. 音声生成
         job.message = "音声を生成中..."

@@ -26,7 +26,7 @@ class PDFProcessor:
         slide_paths = converter.convert_pdf_to_images(pdf_path)
         return len(slide_paths)
     
-    def generate_dialogue_from_pdf(self, pdf_path: str) -> str:
+    def generate_dialogue_from_pdf(self, pdf_path: str, additional_prompt: str = None, progress_callback=None) -> str:
         """PDFから対話データを生成"""
         # 1. PDFからテキストを抽出
         text_extractor = TextExtractor()
@@ -34,7 +34,11 @@ class PDFProcessor:
         
         # 2. 対話を生成
         dialogue_generator = DialogueGenerator()
-        dialogue_data = dialogue_generator.extract_text_from_slides(slide_texts)
+        dialogue_data = dialogue_generator.extract_text_from_slides(
+            slide_texts, 
+            additional_prompt,
+            progress_callback
+        )
         
         # 3. 英単語をカタカナに変換
         katakana_converter = KatakanaConverter()
