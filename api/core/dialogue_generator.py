@@ -74,7 +74,9 @@ class DialogueGenerator:
         user_prompt = f"""スライド{slide_number}/{total_slides}の内容について、めたんとずんだもんの魅力的な対話を作成してください。
 
 スライド内容：
-{slide_text}
+"""
+        user_prompt += slide_text
+        user_prompt += """
 
 重要な要望：
 - このスライドについて8〜12回の会話のやり取りを作成（最低でも8回以上）
@@ -199,13 +201,15 @@ class DialogueGenerator:
         
         # スライドテキストを結合
         slides_content = "\n\n".join([
-            f"スライド{i+1}:\n{text}" 
+            f"スライド{i+1}:\n" + text
             for i, text in enumerate(slide_texts)
         ])
         
-        user_prompt = f"""以下のスライド内容を、めたんとずんだもんの魅力的な対話で解説してください。
+        user_prompt = """以下のスライド内容を、めたんとずんだもんの魅力的な対話で解説してください。
 
-{slides_content}
+"""
+        user_prompt += slides_content
+        user_prompt += """
 
 重要な要望：
 - 各スライドごとに必ず8〜12回の会話のやり取りを作成（最低でも8回以上）
