@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { getApiUrl } from '$lib/config';
 	
 	interface Job {
@@ -33,6 +33,7 @@
 	let currentStep: 'upload' | 'dialogue' | 'video' = 'upload';
 	let slides: Slide[] = [];
 	let isRegenerating = false;
+	
 
 	async function handleFileSelect(event: Event) {
 		const target = event.target as HTMLInputElement;
@@ -76,6 +77,7 @@
 			};
 
 			// ステータス監視開始（対話生成は既にサーバー側で行われる）
+			currentStep = 'upload'; // アップロード処理中
 			pollJobStatus(result.job_id);
 			
 		} catch (error) {
@@ -89,7 +91,14 @@
 	async function generateDialogue(jobId: string, regenerate = false) {
 		try {
 			if (regenerate) {
+				console.log('再生成開始:', { 
+					jobId, 
+					additionalPrompt,
+					currentJobStatus: currentJob?.status,
+					isRegenerating
+				});
 				isRegenerating = true;
+				await tick(); // UIの更新を強制
 			}
 			
 			const response = await fetch(getApiUrl(`/api/jobs/${jobId}/generate-dialogue`), {
@@ -193,6 +202,7 @@
 	}
 
 	async function pollJobStatus(jobId: string) {
+		console.log('ポーリング開始:', { jobId, currentStep });
 		const poll = async () => {
 			try {
 				const response = await fetch(getApiUrl(`/api/jobs/${jobId}/status`));
@@ -205,9 +215,15 @@
 					// 対話データを読み込む
 					await loadDialogue(jobId);
 					isRegenerating = false;
+					return; // ポーリング停止
 				} else if (job.status === 'completed' || job.status === 'failed') {
 					isRegenerating = false;
 					return; // 完了
+				}
+
+				// dialogue編集画面では、generating_dialogue以外はポーリング不要
+				if (currentStep === 'dialogue' && job.status !== 'generating_dialogue') {
+					return;
 				}
 
 				// 3秒後に再試行
