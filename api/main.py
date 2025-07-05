@@ -235,10 +235,21 @@ async def generate_dialogue_only(
     job = jobs_db[job_id]
     
     if job.status not in ["slides_ready", "dialogue_ready"]:
-        raise HTTPException(
-            status_code=400, 
-            detail="スライド変換が完了していません"
-        )
+        if job.status == "generating_dialogue":
+            raise HTTPException(
+                status_code=400, 
+                detail="対話生成が進行中です。完了までお待ちください。"
+            )
+        elif job.status == "failed":
+            raise HTTPException(
+                status_code=400,
+                detail=f"前回の処理が失敗しています: {job.error}"
+            )
+        else:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"対話生成できない状態です: {job.status}"
+            )
     
     # ステータス更新
     job.status = "generating_dialogue"

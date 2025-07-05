@@ -99,7 +99,8 @@
 			});
 
 			if (!response.ok) {
-				throw new Error('対話生成開始に失敗しました');
+				const errorData = await response.json();
+				throw new Error(errorData.detail || '対話生成開始に失敗しました');
 			}
 
 			// 進捗監視開始
@@ -107,8 +108,9 @@
 			
 		} catch (error) {
 			console.error('エラー:', error);
+			alert(error.message || '対話生成に失敗しました');
 			if (currentJob) {
-				currentJob.error = '対話生成に失敗しました';
+				currentJob.error = error.message || '対話生成に失敗しました';
 			}
 		}
 	}
@@ -319,8 +321,9 @@
 				<button 
 					class="regenerate-btn" 
 					on:click={() => currentJob && generateDialogue(currentJob.job_id, true)}
+					disabled={currentJob?.status === 'generating_dialogue'}
 				>
-					🔄 スクリプト再生成
+					{currentJob?.status === 'generating_dialogue' ? '⏳ 生成中...' : '🔄 スクリプト再生成'}
 				</button>
 			</div>
 
