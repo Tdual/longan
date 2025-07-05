@@ -77,7 +77,7 @@
 			};
 
 			// ステータス監視開始（対話生成は既にサーバー側で行われる）
-			currentStep = 'upload'; // アップロード処理中
+			// currentStepは自動的に更新される
 			pollJobStatus(result.job_id);
 			
 		} catch (error) {
@@ -160,21 +160,35 @@
 		}
 	}
 
-	async function loadDialogue(jobId: string) {
+	async function loadDialogue(jobId: string, forceReload = false) {
 		try {
+			console.log('対話データ読み込み開始:', { jobId, forceReload, isRegenerating });
+			
+			// キャッシュを無効化するためのタイムスタンプを追加
+			const timestamp = forceReload || isRegenerating ? `?t=${Date.now()}` : '';
+			
 			// 対話データを取得
-			const dialogueResponse = await fetch(getApiUrl(`/api/jobs/${jobId}/dialogue`));
-			if (!dialogueResponse.ok) return;
+			const dialogueResponse = await fetch(getApiUrl(`/api/jobs/${jobId}/dialogue${timestamp}`));
+			if (!dialogueResponse.ok) {
+				console.error('対話データ取得失敗:', dialogueResponse.status);
+				return;
+			}
 
 			dialogueData = await dialogueResponse.json();
+			console.log('対話データ取得成功:', Object.keys(dialogueData).length + 'スライド');
 			
 			// スライド画像も取得
-			const slidesResponse = await fetch(getApiUrl(`/api/jobs/${jobId}/slides`));
+			const slidesResponse = await fetch(getApiUrl(`/api/jobs/${jobId}/slides${timestamp}`));
 			if (slidesResponse.ok) {
 				slides = await slidesResponse.json();
+				console.log('スライド画像取得成功:', slides.length + '枚');
 			}
 			
 			currentStep = 'dialogue';
+			console.log('currentStep更新:', currentStep);
+			
+			// 強制的にUIを更新
+			await tick();
 		} catch (error) {
 			console.error('対話データ取得エラー:', error);
 		}
@@ -210,13 +224,24 @@
 
 				const job = await response.json();
 				currentJob = job;
+				console.log('ジョブステータス:', {
+					status: job.status,
+					progress: job.progress,
+					message: job.message,
+					dialogueData: !!dialogueData,
+					currentStep
+				});
 
-				if (job.status === 'dialogue_ready' && !dialogueData) {
-					// 対話データを読み込む
-					await loadDialogue(jobId);
-					isRegenerating = false;
-					return; // ポーリング停止
+				if (job.status === 'dialogue_ready' || job.status === 'slides_ready') {
+					if (!dialogueData || isRegenerating) {
+						console.log(`${job.status}検知、対話データ読み込み開始 (再生成: ${isRegenerating})`);
+						// 対話データを読み込む
+						await loadDialogue(jobId, true);  // 強制リロード
+						isRegenerating = false;
+						return; // ポーリング停止
+					}
 				} else if (job.status === 'completed' || job.status === 'failed') {
+					console.log('処理完了/失敗:', job.status);
 					isRegenerating = false;
 					return; // 完了
 				}
