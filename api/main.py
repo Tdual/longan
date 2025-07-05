@@ -259,7 +259,9 @@ async def generate_dialogue_only(
     
     # バックグラウンドで対話生成
     def run_in_thread():
-        asyncio.run(generate_dialogue_task(job_id, request.additional_prompt))
+        # additional_promptがある場合は再生成とみなす
+        is_regeneration = bool(request.additional_prompt)
+        asyncio.run(generate_dialogue_task(job_id, request.additional_prompt, is_regeneration))
     
     thread = threading.Thread(target=run_in_thread)
     thread.daemon = True
@@ -451,7 +453,7 @@ async def convert_pdf_to_slides(job_id: str, pdf_path: str):
         job.error = str(e)
         job.updated_at = datetime.now()
 
-async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] = None):
+async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] = None, is_regeneration: bool = False):
     """対話スクリプトのみを生成するタスク"""
     try:
         job = jobs_db[job_id]
@@ -478,11 +480,61 @@ async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] =
             job.progress = 50 + int(progress * 0.1)  # 50-60%の範囲で進捗表示
             job.updated_at = datetime.now()
         
-        dialogue_path = processor.generate_dialogue_from_pdf(
-            pdf_path, 
-            additional_prompt,
-            progress_callback=update_progress
-        )
+        if is_regeneration and additional_prompt:
+            from api.core.text_extractor import TextExtractor
+            from api.core.dialogue_generator import DialogueGenerator
+            
+            # 再生成の場合、どのスライドを再生成するか判断
+            dialogue_generator = DialogueGenerator()
+            text_extractor = TextExtractor()
+            slide_texts = text_extractor.extract_text_from_pdf(pdf_path)
+            
+            # AIに判断させる
+            target_slides = dialogue_generator.analyze_regeneration_request(
+                additional_prompt, 
+                len(slide_texts)
+            )
+            
+            # 既存の対話データを読み込む
+            existing_dialogue_path = Path.cwd() / "data" / job_id / "dialogue_narration_original.json"
+            if existing_dialogue_path.exists():
+                with open(existing_dialogue_path, 'r', encoding='utf-8') as f:
+                    existing_dialogues = json.load(f)
+            else:
+                existing_dialogues = {}
+            
+            # 特定のスライドのみ再生成
+            dialogue_data = dialogue_generator.regenerate_specific_slides(
+                slide_texts,
+                existing_dialogues,
+                target_slides,
+                additional_prompt,
+                progress_callback=update_progress
+            )
+            
+            # データを保存
+            data_dir = Path.cwd() / "data" / job_id
+            data_dir.mkdir(exist_ok=True)
+            
+            dialogue_path = data_dir / "dialogue_narration_original.json"
+            with open(dialogue_path, 'w', encoding='utf-8') as f:
+                json.dump(dialogue_data, f, ensure_ascii=False, indent=2)
+            
+            # カタカナ版も保存
+            from api.core.katakana_converter import KatakanaConverter
+            katakana_converter = KatakanaConverter()
+            dialogue_data_katakana = katakana_converter.convert_dialogue_to_katakana(dialogue_data)
+            
+            katakana_path = data_dir / "dialogue_narration_katakana.json"
+            with open(katakana_path, 'w', encoding='utf-8') as f:
+                json.dump(dialogue_data_katakana, f, ensure_ascii=False, indent=2)
+        else:
+            # 通常の生成
+            dialogue_path = processor.generate_dialogue_from_pdf(
+                pdf_path, 
+                additional_prompt,
+                progress_callback=update_progress
+            )
         
         # 完了
         job.status = "dialogue_ready"

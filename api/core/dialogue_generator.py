@@ -1,6 +1,6 @@
 import os
 import json
-from typing import List, Dict
+from typing import List, Dict, Optional
 from pathlib import Path
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -15,6 +15,69 @@ class DialogueGenerator:
             raise ValueError("OPENAI_API_KEY が設定されていません")
         
         self.client = OpenAI(api_key=self.api_key)
+    
+    def analyze_regeneration_request(self, user_instruction: str, total_slides: int) -> List[int]:
+        """ユーザーの指示から再生成するスライド番号を判断"""
+        
+        system_prompt = """あなたはユーザーの指示を分析して、どのスライドを再生成すべきか判断するアシスタントです。
+
+ユーザーの指示を分析して、以下のルールに従ってスライド番号のリストを返してください：
+1. 「1枚目」「最初のスライド」「スライド1」などの表現は slide_numbers: [1] 
+2. 「2枚目と3枚目」「スライド2-3」などの表現は slide_numbers: [2, 3]
+3. 「全部」「全体」「すべて」などの表現は slide_numbers: [1, 2, ..., total_slides]
+4. 「最後」「最終」などの表現は slide_numbers: [total_slides]
+5. 「前半」は slide_numbers: [1, 2, ..., total_slides/2]
+6. 「後半」は slide_numbers: [total_slides/2+1, ..., total_slides]
+
+必ず以下のJSON形式で返してください：
+{
+  "slide_numbers": [1, 2, 3],
+  "reason": "なぜこれらのスライドを選んだか"
+}"""
+        
+        user_prompt = f"""全体で{total_slides}枚のスライドがあります。
+
+ユーザーの指示: {user_instruction}
+
+どのスライドを再生成すべきか判断してください。"""
+        
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",  # 軽量なモデルで十分
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.1,  # 確実性を高める
+                max_tokens=500,
+                response_format={"type": "json_object"}
+            )
+            
+            content = response.choices[0].message.content
+            if not content:
+                # デフォルトは全スライド
+                return list(range(1, total_slides + 1))
+            
+            try:
+                result = json.loads(content)
+                slide_numbers = result.get("slide_numbers", [])
+                # 有効なスライド番号のみを返す
+                valid_numbers = [n for n in slide_numbers if 1 <= n <= total_slides]
+                
+                if not valid_numbers:
+                    # 判断できない場合は全スライド
+                    return list(range(1, total_slides + 1))
+                
+                print(f"再生成対象スライド: {valid_numbers} (理由: {result.get('reason', '不明')})")
+                return valid_numbers
+                
+            except json.JSONDecodeError:
+                return list(range(1, total_slides + 1))
+                
+        except Exception as e:
+            print(f"スライド判断エラー: {e}")
+            # エラー時は全スライド
+            return list(range(1, total_slides + 1))
         
     def extract_text_from_slides(self, slide_texts: List[str], additional_prompt: str = None, progress_callback=None) -> Dict[str, List[Dict]]:
         """スライドのテキストから対話形式のナレーションを生成（スライドごとに個別生成）"""
@@ -42,6 +105,47 @@ class DialogueGenerator:
             slide_dialogue = self.generate_dialogue_for_single_slide(
                 slide_number=i+1,
                 slide_text=slide_text,
+                total_slides=len(slide_texts),
+                previous_dialogues=previous_dialogues,
+                additional_prompt=additional_prompt
+            )
+            dialogue_data[slide_key] = slide_dialogue
+        
+        return dialogue_data
+    
+    def regenerate_specific_slides(self, slide_texts: List[str], existing_dialogues: Dict[str, List[Dict]], slide_numbers: List[int], additional_prompt: str = None, progress_callback=None) -> Dict[str, List[Dict]]:
+        """特定のスライドのみ再生成"""
+        
+        # 既存の対話データをコピー
+        dialogue_data = existing_dialogues.copy()
+        
+        # 指定されたスライドのみ再生成
+        for slide_num in slide_numbers:
+            if slide_num < 1 or slide_num > len(slide_texts):
+                continue
+                
+            i = slide_num - 1  # 0ベースのインデックスに変換
+            slide_key = f"slide_{slide_num}"
+            
+            # 進捗を通知
+            if progress_callback:
+                try:
+                    progress_msg = f"スライド{slide_num}の対話を再生成中... ({slide_numbers.index(slide_num)+1}/{len(slide_numbers)})"
+                    progress = (slide_numbers.index(slide_num) / len(slide_numbers)) * 100
+                    progress_callback(progress_msg, progress)
+                except Exception as e:
+                    print(f"進捗コールバックエラー: {e}")
+            
+            # 過去のスライドの対話を収集（再生成対象を除く）
+            previous_dialogues = {}
+            for j in range(i):
+                prev_key = f"slide_{j+1}"
+                if prev_key in dialogue_data:
+                    previous_dialogues[prev_key] = dialogue_data[prev_key]
+            
+            slide_dialogue = self.generate_dialogue_for_single_slide(
+                slide_number=slide_num,
+                slide_text=slide_texts[i],
                 total_slides=len(slide_texts),
                 previous_dialogues=previous_dialogues,
                 additional_prompt=additional_prompt

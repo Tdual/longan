@@ -32,6 +32,7 @@
 	let additionalPrompt = '';
 	let currentStep: 'upload' | 'dialogue' | 'video' = 'upload';
 	let slides: Slide[] = [];
+	let isRegenerating = false;
 
 	async function handleFileSelect(event: Event) {
 		const target = event.target as HTMLInputElement;
@@ -87,6 +88,10 @@
 
 	async function generateDialogue(jobId: string, regenerate = false) {
 		try {
+			if (regenerate) {
+				isRegenerating = true;
+			}
+			
 			const response = await fetch(getApiUrl(`/api/jobs/${jobId}/generate-dialogue`), {
 				method: 'POST',
 				headers: {
@@ -112,6 +117,7 @@
 			if (currentJob) {
 				currentJob.error = error.message || '対話生成に失敗しました';
 			}
+			isRegenerating = false;
 		}
 	}
 
@@ -198,7 +204,9 @@
 				if (job.status === 'dialogue_ready' && !dialogueData) {
 					// 対話データを読み込む
 					await loadDialogue(jobId);
+					isRegenerating = false;
 				} else if (job.status === 'completed' || job.status === 'failed') {
+					isRegenerating = false;
 					return; // 完了
 				}
 
@@ -220,6 +228,7 @@
 		editingDialogue = false;
 		additionalPrompt = '';
 		currentStep = 'upload';
+		isRegenerating = false;
 	}
 
 	function addDialogueItem(slideKey: string) {
@@ -315,16 +324,25 @@
 				<textarea 
 					id="additional-prompt"
 					bind:value={additionalPrompt}
-					placeholder="例: もっとカジュアルな口調にして、技術的な内容も初心者に分かりやすく説明して"
+					placeholder="例: 1枚目のスライドをもっとカジュアルに / 全体的に初心者向けに / 最初と最後のスライドを修正"
 					rows="3"
+					disabled={isRegenerating}
 				></textarea>
 				<button 
 					class="regenerate-btn" 
 					on:click={() => currentJob && generateDialogue(currentJob.job_id, true)}
-					disabled={currentJob?.status === 'generating_dialogue'}
+					disabled={currentJob?.status === 'generating_dialogue' || isRegenerating || !additionalPrompt.trim()}
 				>
-					{currentJob?.status === 'generating_dialogue' ? '⏳ 生成中...' : '🔄 スクリプト再生成'}
+					{isRegenerating ? '⏳ 再生成中...' : '🔄 スクリプト再生成'}
 				</button>
+				{#if isRegenerating && currentJob}
+					<div class="regeneration-status">
+						<div class="status-message">🤖 {currentJob.message || 'AIが修正対象を判断中...'}</div>
+						<div class="progress-bar">
+							<div class="progress-fill" style="width: {currentJob.progress}%"></div>
+						</div>
+					</div>
+				{/if}
 			</div>
 
 			<div class="dialogue-list">
@@ -602,6 +620,26 @@
 
 	.regenerate-btn:hover {
 		background-color: #7c3aed;
+	}
+
+	.regenerate-btn:disabled {
+		background-color: #d1d5db;
+		color: #9ca3af;
+		cursor: not-allowed;
+	}
+
+	.regeneration-status {
+		margin-top: 1rem;
+		padding: 1rem;
+		background-color: #f0f9ff;
+		border: 1px solid #60a5fa;
+		border-radius: 6px;
+	}
+
+	.status-message {
+		font-size: 0.875rem;
+		color: #1e40af;
+		margin-bottom: 0.5rem;
 	}
 
 	.dialogue-list {
