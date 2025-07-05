@@ -1,0 +1,10 @@
+__pycache__
+*.pyc
+.DS_Store
+.git
+.gitignore
+output/*.mp4
+audio/*.wav
+slides/*.png
+temp/
+*.log

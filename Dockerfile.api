@@ -1,0 +1,28 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# 必要なシステムパッケージをインストール
+RUN apt-get update && apt-get install -y \
+    poppler-utils \
+    ffmpeg \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Pythonの依存関係をインストール
+COPY requirements.txt .
+COPY api/requirements.txt ./api_requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r api_requirements.txt
+
+# アプリケーションのコードをコピー
+COPY api/ ./api/
+COPY src/ ./src/
+COPY data/ ./data/
+
+# 必要なディレクトリを作成
+RUN mkdir -p uploads output slides audio data
+
+EXPOSE 8000
+
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

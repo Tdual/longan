@@ -33,6 +33,23 @@ services:
       - app-network
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 
+  # Svelte フロントエンド
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - VITE_API_URL=http://localhost:8000
+      - INTERNAL_API_URL=http://api:8000
+      - ORIGIN=http://localhost:3000
+    depends_on:
+      - api
+    networks:
+      - app-network
+
 networks:
   app-network:
     driver: bridge

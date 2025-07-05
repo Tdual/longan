@@ -1,4 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
+import asyncio
+import threading
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -211,6 +213,40 @@ async def download_video(job_id: str):
         filename=f"video_{job_id}.mp4"
     )
 
+@app.post("/api/jobs/{job_id}/generate-video")
+async def generate_video_complete(
+    job_id: str,
+    background_tasks: BackgroundTasks
+):
+    """ワンクリック動画生成（全工程を自動実行）"""
+    
+    if job_id not in jobs_db:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    
+    job = jobs_db[job_id]
+    
+    if job.status not in ["pending", "slides_ready"]:
+        raise HTTPException(
+            status_code=400, 
+            detail="ジョブが適切な状態ではありません"
+        )
+    
+    # ステータス更新
+    job.status = "processing"
+    job.progress = 10
+    job.message = "動画生成を開始しました"
+    job.updated_at = datetime.now()
+    
+    # バックグラウンドで全工程を実行（スレッドで実行してメインスレッドをブロックしない）
+    def run_in_thread():
+        asyncio.run(generate_complete_video(job_id))
+    
+    thread = threading.Thread(target=run_in_thread)
+    thread.daemon = True
+    thread.start()
+    
+    return {"message": "動画生成を開始しました", "job_id": job_id}
+
 @app.get("/api/jobs", response_model=List[JobStatus])
 async def list_jobs():
     """全ジョブのリストを取得"""
@@ -264,6 +300,69 @@ async def convert_pdf_to_slides(job_id: str, pdf_path: str):
         job.status = "slides_ready"
         job.progress = 20
         job.message = f"スライド変換と対話生成が完了しました（{slide_count}枚）"
+        job.updated_at = datetime.now()
+        
+    except Exception as e:
+        job = jobs_db[job_id]
+        job.status = "failed"
+        job.error = str(e)
+        job.updated_at = datetime.now()
+
+async def generate_complete_video(job_id: str):
+    """完全な動画生成フロー（全工程を自動実行）"""
+    try:
+        job = jobs_db[job_id]
+        
+        # 1. PDFをスライドに変換
+        job.message = "PDFをスライドに変換中..."
+        job.progress = 20
+        job.updated_at = datetime.now()
+        
+        # PDFファイルパスを取得
+        job_dir = UPLOAD_DIR / job_id
+        pdf_files = list(job_dir.glob("*.pdf"))
+        if not pdf_files:
+            raise Exception("PDFファイルが見つかりません")
+        
+        pdf_path = str(pdf_files[0])
+        
+        # PDFを処理
+        processor = PDFProcessor(job_id, Path.cwd())
+        slide_count = processor.convert_pdf_to_slides(pdf_path)
+        
+        # 2. 対話データ生成
+        job.message = "対話スクリプトを生成中..."
+        job.progress = 40
+        job.updated_at = datetime.now()
+        
+        dialogue_path = processor.generate_dialogue_from_pdf(pdf_path)
+        
+        # 3. 音声生成
+        job.message = "音声を生成中..."
+        job.progress = 60
+        job.updated_at = datetime.now()
+        
+        audio_generator = AudioGenerator(job_id, Path.cwd())
+        audio_count = audio_generator.generate_audio_files(
+            speed_scale=1.0,
+            pitch_scale=0.0,
+            intonation_scale=1.2,
+            volume_scale=1.0
+        )
+        
+        # 4. 動画作成
+        job.message = "動画を作成中..."
+        job.progress = 80
+        job.updated_at = datetime.now()
+        
+        video_creator = VideoCreator(job_id, Path.cwd())
+        video_path = video_creator.create_video()
+        
+        # 5. 完了
+        job.status = "completed"
+        job.progress = 100
+        job.message = "動画生成が完了しました"
+        job.result_url = f"/api/jobs/{job_id}/download"
         job.updated_at = datetime.now()
         
     except Exception as e:

@@ -90,9 +90,21 @@ create_*_test.py
 create_*_temp.py
 
 # Generated documentation
-README_VOICEVOX.md*.pyc
-__pycache__/
-.DS_Store
-temp/
-*.wav
-!audio/*.wav
+README_VOICEVOX.md
+
+# Data directories (contain generated content)
+data/
+uploads/
+simple_data/
+test_data/
+
+# Log files
+*.log
+
+# Test scripts
+test_*.sh
+
+# Temporary Docker files
+Dockerfile.simple
+Dockerfile.test
+docker-compose.simple.yml
