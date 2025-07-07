@@ -46,7 +46,99 @@
 	let showHistory = false;
 	let showHistoryForSlide: string | null = null;
 	let targetDuration = 10; // デフォルト10分
+	let availableSpeakers: any[] = [];
+	let selectedSpeaker1Id = 2;
+	let selectedSpeaker2Id = 3;
+	let speakersLoading = false;
+	let showRecommendations = false;
+	let playingSampleId: number | null = null;
+	let currentJobMetadata: any = null; // 現在のジョブのメタデータ
 	
+	// ビジネス向けおすすめ組み合わせ
+	const businessRecommendations = [
+		{
+			name: '最もプロフェッショナル',
+			description: '企業向けプレゼンや研修動画に最適',
+			speaker1: { id: 13, name: '青山龍星' },
+			speaker2: { id: 16, name: '九州そら' }
+		},
+		{
+			name: 'バランス型',
+			description: '幅広いビジネスシーンに対応',
+			speaker1: { id: 11, name: '玄野武宏' },
+			speaker2: { id: 8, name: '春日部つむぎ' }
+		},
+		{
+			name: '若手向け',
+			description: 'スタートアップや若手向けコンテンツに',
+			speaker1: { id: 14, name: '冥鳴ひまり' },
+			speaker2: { id: 12, name: '白上虎太郎' }
+		}
+	];
+	
+	async function loadSpeakers() {
+		speakersLoading = true;
+		try {
+			const response = await fetch(getApiUrl('/api/speakers'));
+			if (response.ok) {
+				availableSpeakers = await response.json();
+			}
+		} catch (error) {
+			console.error('スピーカー一覧の取得に失敗:', error);
+		} finally {
+			speakersLoading = false;
+		}
+	}
+
+	onMount(() => {
+		loadSpeakers();
+	});
+	
+	function applyRecommendation(recommendation: any) {
+		selectedSpeaker1Id = recommendation.speaker1.id;
+		selectedSpeaker2Id = recommendation.speaker2.id;
+		showRecommendations = false;
+	}
+	
+	async function playVoiceSample(speakerId: number, speakerName: string) {
+		try {
+			playingSampleId = speakerId;
+			
+			const sampleText = speakerName === 'ずんだもん' 
+				? 'こんにちは！ずんだもんなのだ！' 
+				: `こんにちは！${speakerName}です。よろしくお願いします。`;
+			
+			const response = await fetch(getApiUrl('/api/voice-sample'), {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					speaker_id: speakerId,
+					text: sampleText
+				})
+			});
+			
+			if (response.ok) {
+				const blob = await response.blob();
+				const audioUrl = URL.createObjectURL(blob);
+				const audio = new Audio(audioUrl);
+				
+				await audio.play();
+				
+				// メモリリークを防ぐためにURLを解放
+				audio.addEventListener('ended', () => {
+					URL.revokeObjectURL(audioUrl);
+					playingSampleId = null;
+				});
+			} else {
+				playingSampleId = null;
+			}
+		} catch (error) {
+			console.error('サンプルボイスの再生に失敗:', error);
+			playingSampleId = null;
+		}
+	}
 
 	async function handleFileSelect(event: Event) {
 		const target = event.target as HTMLInputElement;
@@ -73,6 +165,14 @@
 			const formData = new FormData();
 			formData.append('file', selectedFile);
 			formData.append('target_duration', targetDuration.toString());
+			// 選択されたスピーカー情報を取得
+			const speaker1 = availableSpeakers.find(s => s.style_id === selectedSpeaker1Id);
+			const speaker2 = availableSpeakers.find(s => s.style_id === selectedSpeaker2Id);
+			
+			formData.append('speaker1_id', selectedSpeaker1Id.toString());
+			formData.append('speaker1_name', speaker1 ? speaker1.speaker_name : '四国めたん');
+			formData.append('speaker2_id', selectedSpeaker2Id.toString());
+			formData.append('speaker2_name', speaker2 ? speaker2.speaker_name : 'ずんだもん');
 
 			const response = await fetch(getApiUrl('/api/jobs/upload'), {
 				method: 'POST',
@@ -146,8 +246,8 @@
 
 	async function startVideoGeneration(jobId: string) {
 		try {
-			// 編集された対話データがあれば保存
-			if (editingDialogue && dialogueData) {
+			// 対話データがあれば必ず保存（編集された可能性があるため）
+			if (dialogueData) {
 				await updateDialogue(jobId);
 			}
 
@@ -212,6 +312,9 @@
 			// 指示履歴も取得
 			await loadInstructionHistory(jobId);
 			
+			// メタデータも取得
+			await loadJobMetadata(jobId);
+			
 			currentStep = 'dialogue';
 			console.log('currentStep更新:', currentStep);
 			
@@ -232,6 +335,18 @@
 			}
 		} catch (error) {
 			console.error('指示履歴取得エラー:', error);
+		}
+	}
+
+	async function loadJobMetadata(jobId: string) {
+		try {
+			const response = await fetch(getApiUrl(`/api/jobs/${jobId}/metadata`));
+			if (response.ok) {
+				currentJobMetadata = await response.json();
+				console.log('メタデータ取得成功:', currentJobMetadata);
+			}
+		} catch (error) {
+			console.error('メタデータ取得エラー:', error);
 		}
 	}
 
@@ -318,9 +433,15 @@
 
 	function addDialogueItem(slideKey: string) {
 		if (!dialogueData) return;
+		// 最後の発話者と逆のスピーカーを選択
+		const lastSpeaker = dialogueData[slideKey].length > 0 
+			? dialogueData[slideKey][dialogueData[slideKey].length - 1].speaker
+			: 'speaker2';
+		const nextSpeaker = lastSpeaker === 'speaker1' ? 'speaker2' : 'speaker1';
+		
 		dialogueData[slideKey] = [
 			...dialogueData[slideKey],
-			{ speaker: 'metan', text: '' }
+			{ speaker: nextSpeaker, text: '' }
 		];
 	}
 
@@ -336,6 +457,62 @@
 			showHistoryForSlide = slideKey;
 		}
 	}
+
+	async function downloadCSV(jobId: string) {
+		try {
+			const response = await fetch(getApiUrl(`/api/jobs/${jobId}/dialogue/csv`));
+			if (!response.ok) {
+				throw new Error('CSVダウンロードに失敗しました');
+			}
+			
+			const blob = await response.blob();
+			const url = window.URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = `dialogue_${jobId}.csv`;
+			document.body.appendChild(a);
+			a.click();
+			window.URL.revokeObjectURL(url);
+			document.body.removeChild(a);
+		} catch (error) {
+			console.error('CSVダウンロードエラー:', error);
+			alert('CSVダウンロードに失敗しました');
+		}
+	}
+
+	async function handleCSVUpload(event: Event) {
+		const target = event.target as HTMLInputElement;
+		if (!target.files || !target.files[0] || !currentJob) return;
+		
+		const file = target.files[0];
+		const formData = new FormData();
+		formData.append('file', file);
+		
+		try {
+			const response = await fetch(getApiUrl(`/api/jobs/${currentJob.job_id}/dialogue/csv`), {
+				method: 'POST',
+				body: formData
+			});
+			
+			if (!response.ok) {
+				const error = await response.json();
+				throw new Error(error.detail || 'CSVアップロードに失敗しました');
+			}
+			
+			const result = await response.json();
+			alert(`${result.message}`);
+			
+			// 対話データを再読み込み
+			await loadDialogue(currentJob.job_id, true);
+			
+		} catch (error) {
+			console.error('CSVアップロードエラー:', error);
+			alert(error.message || 'CSVアップロードに失敗しました');
+		} finally {
+			// ファイル選択をリセット
+			target.value = '';
+		}
+	}
 </script>
 
 <svelte:head>
@@ -345,7 +522,7 @@
 <main class="container">
 	<header>
 		<h1>🎬 PDF to Video Generator</h1>
-		<p>PDFスライドからずんだもん＆四国めたんの対話動画を自動生成</p>
+		<p>PDFスライドからVOICEVOXキャラクターによる対話動画を自動生成</p>
 	</header>
 
 	{#if currentStep === 'upload' && !currentJob}
@@ -399,11 +576,111 @@
 						/>
 						<span>分</span>
 					</div>
+
+					<div class="speaker-settings">
+						<h4>キャラクター設定</h4>
+						<button 
+							class="recommendation-toggle" 
+							on:click={() => showRecommendations = !showRecommendations}
+							disabled={playingSampleId !== null}
+						>
+							💼 ビジネス向けおすすめを見る
+						</button>
+						
+						{#if showRecommendations}
+							<div class="recommendations">
+								<h5>ビジネス向けおすすめ組み合わせ</h5>
+								{#each businessRecommendations as rec}
+									<div class="recommendation-item">
+										<div class="rec-header">
+											<strong>{rec.name}</strong>
+											<button 
+												class="apply-btn" 
+												on:click={() => applyRecommendation(rec)}
+												disabled={playingSampleId !== null}
+											>
+												この組み合わせを使う
+											</button>
+										</div>
+										<p class="rec-description">{rec.description}</p>
+										<p class="rec-speakers">
+											説明役: {rec.speaker1.name} / 聞き役: {rec.speaker2.name}
+										</p>
+									</div>
+								{/each}
+							</div>
+						{/if}
+						
+						{#if speakersLoading}
+							<p>読み込み中...</p>
+						{:else}
+							<div class="speaker-row">
+								<label for="speaker1">話者1（説明役）:</label>
+								<select 
+									id="speaker1" 
+									bind:value={selectedSpeaker1Id}
+									disabled={playingSampleId !== null}
+								>
+									{#each availableSpeakers as speaker}
+										<option value={speaker.style_id}>
+											{speaker.display_name}
+										</option>
+									{/each}
+								</select>
+								<button 
+									class="sample-btn" 
+									class:loading={playingSampleId === selectedSpeaker1Id}
+									on:click={() => {
+										const speaker = availableSpeakers.find(s => s.style_id === selectedSpeaker1Id);
+										if (speaker) playVoiceSample(selectedSpeaker1Id, speaker.speaker_name);
+									}}
+									disabled={playingSampleId !== null}
+									title="サンプルボイスを再生"
+								>
+									{#if playingSampleId === selectedSpeaker1Id}
+										<span class="spinner"></span>
+									{:else}
+										🔊
+									{/if}
+								</button>
+							</div>
+							<div class="speaker-row">
+								<label for="speaker2">話者2（聞き役）:</label>
+								<select 
+									id="speaker2" 
+									bind:value={selectedSpeaker2Id}
+									disabled={playingSampleId !== null}
+								>
+									{#each availableSpeakers as speaker}
+										<option value={speaker.style_id}>
+											{speaker.display_name}
+										</option>
+									{/each}
+								</select>
+								<button 
+									class="sample-btn" 
+									class:loading={playingSampleId === selectedSpeaker2Id}
+									on:click={() => {
+										const speaker = availableSpeakers.find(s => s.style_id === selectedSpeaker2Id);
+										if (speaker) playVoiceSample(selectedSpeaker2Id, speaker.speaker_name);
+									}}
+									disabled={playingSampleId !== null}
+									title="サンプルボイスを再生"
+								>
+									{#if playingSampleId === selectedSpeaker2Id}
+										<span class="spinner"></span>
+									{:else}
+										🔊
+									{/if}
+								</button>
+							</div>
+						{/if}
+					</div>
 					
 					<button 
 						class="generate-btn" 
 						on:click={uploadAndGenerate}
-						disabled={isUploading}
+						disabled={isUploading || playingSampleId !== null}
 					>
 						{isUploading ? '処理中...' : '📝 対話スクリプト生成'}
 					</button>
@@ -429,6 +706,19 @@
 				<button class="edit-btn" on:click={() => editingDialogue = !editingDialogue}>
 					{editingDialogue ? '編集を終了' : '✏️ スクリプトを編集'}
 				</button>
+				<button class="csv-download-btn" on:click={() => currentJob && downloadCSV(currentJob.job_id)}>
+					📥 CSVダウンロード
+				</button>
+				<button class="csv-upload-btn" on:click={() => document.getElementById('csv-upload-input')?.click()}>
+					📤 CSVアップロード
+				</button>
+				<input
+					id="csv-upload-input"
+					type="file"
+					accept=".csv"
+					style="display: none"
+					on:change={handleCSVUpload}
+				/>
 				<button class="generate-btn" on:click={() => currentJob && startVideoGeneration(currentJob.job_id)}>
 					🎥 動画生成開始
 				</button>
@@ -484,7 +774,7 @@
 									<img src={getApiUrl(slide.url)} alt="Slide {slideNum}" class="slide-thumbnail" />
 								{/if}
 							{/if}
-							<h4>{slideKey.replace('_', ' ')}</h4>
+							<h4>{slideKey.replace('slide_', 'スライド')}</h4>
 							{#if slideHistory.length > 0}
 								<button 
 									class="history-toggle"
@@ -513,7 +803,17 @@
 						{#each dialogues as dialogue, index}
 							<div class="dialogue-item">
 								<div class="speaker-label {dialogue.speaker}">
-									{dialogue.speaker === 'metan' ? '四国めたん' : 'ずんだもん'}
+									{#if dialogue.speaker === 'speaker1'}
+										{currentJobMetadata?.speaker1?.name || '話者1'}
+									{:else if dialogue.speaker === 'speaker2'}
+										{currentJobMetadata?.speaker2?.name || '話者2'}
+									{:else if dialogue.speaker === 'metan'}
+										四国めたん
+									{:else if dialogue.speaker === 'zundamon'}
+										ずんだもん
+									{:else}
+										{dialogue.speaker}
+									{/if}
 								</div>
 								{#if editingDialogue}
 									<textarea 
@@ -585,6 +885,18 @@
 								<source src={getApiUrl(currentJob.result_url)} type="video/mp4">
 								お使いのブラウザは動画再生に対応していません。
 							</video>
+						</div>
+						<div class="action-buttons">
+							<button 
+								class="back-to-script-btn" 
+								on:click={() => {
+									if (currentJob && dialogueData) {
+										currentStep = 'dialogue';
+									}
+								}}
+							>
+								📝 スクリプトに戻る
+							</button>
 						</div>
 					</div>
 				{/if}
@@ -759,6 +1071,20 @@
 
 	.edit-btn:hover {
 		background-color: #2563eb;
+	}
+
+	.csv-download-btn, .csv-upload-btn {
+		background-color: #059669;
+		color: white;
+		border: none;
+		padding: 0.75rem 1.5rem;
+		border-radius: 8px;
+		cursor: pointer;
+		transition: background-color 0.3s ease;
+	}
+
+	.csv-download-btn:hover, .csv-upload-btn:hover {
+		background-color: #047857;
 	}
 
 	.edit-notice {
@@ -1048,6 +1374,28 @@
 		margin-top: 2rem;
 	}
 
+	.action-buttons {
+		display: flex;
+		gap: 1rem;
+		justify-content: center;
+		margin-top: 1.5rem;
+	}
+
+	.back-to-script-btn {
+		background-color: #3b82f6;
+		color: white;
+		border: none;
+		padding: 0.75rem 1.5rem;
+		border-radius: 8px;
+		cursor: pointer;
+		font-size: 1rem;
+		transition: background-color 0.3s ease;
+	}
+
+	.back-to-script-btn:hover {
+		background-color: #2563eb;
+	}
+
 	/* 目安時間設定スタイル */
 	.duration-setting {
 		margin: 1rem 0;
@@ -1072,6 +1420,196 @@
 
 	.duration-setting span {
 		color: #6b7280;
+	}
+
+	/* キャラクター設定スタイル */
+	.speaker-settings {
+		margin: 1.5rem 0;
+		padding: 1rem;
+		background-color: #f9fafb;
+		border-radius: 8px;
+		border: 1px solid #e5e7eb;
+	}
+
+	.speaker-settings h4 {
+		margin: 0 0 1rem 0;
+		color: #374151;
+		font-size: 1.1rem;
+	}
+
+	.speaker-row {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.speaker-row:last-child {
+		margin-bottom: 0;
+	}
+
+	.speaker-row label {
+		min-width: 150px;
+		font-weight: 500;
+		color: #374151;
+	}
+
+	.speaker-row select {
+		flex: 1;
+		padding: 0.5rem;
+		border: 1px solid #d1d5db;
+		border-radius: 6px;
+		font-size: 1rem;
+		background-color: white;
+		cursor: pointer;
+	}
+
+	.speaker-row select:hover {
+		border-color: #9ca3af;
+	}
+
+	.speaker-row select:focus {
+		outline: none;
+		border-color: #2563eb;
+		box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+	}
+	
+	.recommendation-toggle {
+		background-color: #f3f4f6;
+		color: #1f2937;
+		border: 1px solid #d1d5db;
+		padding: 0.5rem 1rem;
+		border-radius: 6px;
+		cursor: pointer;
+		margin-bottom: 1rem;
+		transition: all 0.2s ease;
+		font-weight: 500;
+	}
+	
+	.recommendation-toggle:hover {
+		background-color: #e5e7eb;
+		border-color: #9ca3af;
+	}
+	
+	.recommendations {
+		background-color: #f0f9ff;
+		border: 1px solid #3b82f6;
+		border-radius: 8px;
+		padding: 1rem;
+		margin-bottom: 1.5rem;
+	}
+	
+	.recommendations h5 {
+		margin: 0 0 1rem 0;
+		color: #1e40af;
+		font-size: 1rem;
+	}
+	
+	.recommendation-item {
+		background-color: white;
+		border: 1px solid #dbeafe;
+		border-radius: 6px;
+		padding: 0.75rem;
+		margin-bottom: 0.75rem;
+	}
+	
+	.recommendation-item:last-child {
+		margin-bottom: 0;
+	}
+	
+	.rec-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 0.5rem;
+	}
+	
+	.rec-header strong {
+		color: #1f2937;
+		font-size: 0.95rem;
+	}
+	
+	.apply-btn {
+		background-color: #3b82f6;
+		color: white;
+		border: none;
+		padding: 0.25rem 0.75rem;
+		border-radius: 4px;
+		cursor: pointer;
+		font-size: 0.875rem;
+		transition: background-color 0.2s ease;
+	}
+	
+	.apply-btn:hover {
+		background-color: #2563eb;
+	}
+	
+	.rec-description {
+		color: #6b7280;
+		font-size: 0.875rem;
+		margin: 0 0 0.25rem 0;
+	}
+	
+	.rec-speakers {
+		color: #374151;
+		font-size: 0.875rem;
+		margin: 0;
+	}
+	
+	.sample-btn {
+		background-color: #10b981;
+		color: white;
+		border: none;
+		padding: 0.5rem;
+		border-radius: 6px;
+		cursor: pointer;
+		font-size: 1rem;
+		transition: all 0.2s ease;
+		width: 40px;
+		height: 40px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+	
+	.sample-btn:hover {
+		background-color: #059669;
+		transform: scale(1.05);
+	}
+	
+	.sample-btn:active {
+		transform: scale(0.95);
+	}
+	
+	.sample-btn:disabled {
+		background-color: #9ca3af;
+		cursor: not-allowed;
+		transform: none;
+	}
+	
+	.sample-btn.loading {
+		background-color: #6b7280;
+	}
+	
+	.spinner {
+		display: inline-block;
+		width: 16px;
+		height: 16px;
+		border: 2px solid rgba(255, 255, 255, 0.3);
+		border-top-color: white;
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+	
+	@keyframes spin {
+		0% { transform: rotate(0deg); }
+		100% { transform: rotate(360deg); }
+	}
+	
+	select:disabled,
+	button:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
 	}
 
 	/* 指示履歴スタイル */

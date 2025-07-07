@@ -50,11 +50,21 @@ class AudioGenerator:
         with open(dialogue_data_path, "r", encoding="utf-8") as f:
             dialogue_data = json.load(f)
         
-        # スピーカー設定
-        speakers = {
-            "metan": 2,    # 四国めたん
-            "zundamon": 3  # ずんだもん
-        }
+        # メタデータからスピーカー設定を読み込む
+        metadata_path = self.base_dir / "uploads" / self.job_id / "metadata.json"
+        if metadata_path.exists():
+            with open(metadata_path, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+            speakers = {
+                "speaker1": metadata.get("speaker1", {}).get("id", 2),
+                "speaker2": metadata.get("speaker2", {}).get("id", 3)
+            }
+        else:
+            # デフォルト設定
+            speakers = {
+                "speaker1": 2,    # 四国めたん
+                "speaker2": 3     # ずんだもん
+            }
         
         audio_count = 0
         
@@ -76,7 +86,12 @@ class AudioGenerator:
                 
                 # ファイル名を生成
                 slide_num = slide_key.replace("slide_", "")
-                audio_filename = f"slide_{slide_num:0>3}_{idx+1:0>3}_{speaker_name}.wav"
+                try:
+                    slide_num_int = int(slide_num)
+                    audio_filename = f"slide_{slide_num_int:03d}_{idx+1:03d}_{speaker_name}.wav"
+                except ValueError:
+                    # 数値に変換できない場合はそのまま使用
+                    audio_filename = f"slide_{slide_num}_{idx+1:03d}_{speaker_name}.wav"
                 
                 # 音声クエリの作成
                 query_data = {

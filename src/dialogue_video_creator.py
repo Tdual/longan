@@ -113,7 +113,7 @@ class DialogueVideoCreator:
             fps=fps,
             codec='libx264',
             audio_codec='aac',
-            preset='medium',  # 高画質のためにプリセットを調整
+            preset='fast',  # 処理速度と品質のバランス
             threads=8,
             bitrate='2000k',  # 高画質のためにビットレートを上げる
             audio_bitrate='192k',  # 音声品質も向上

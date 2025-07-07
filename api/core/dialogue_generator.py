@@ -80,18 +80,145 @@ class DialogueGenerator:
             # エラー時は全スライド
             return list(range(1, total_slides + 1))
         
-    def extract_text_from_slides(self, slide_texts: List[str], additional_prompt: str = None, progress_callback=None, target_duration: int = 10) -> Dict[str, List[Dict]]:
+    def analyze_user_importance_adjustments(self, user_instruction: str, slide_count: int) -> Dict[int, float]:
+        """ユーザーの指示から重要度の調整を分析"""
+        
+        system_prompt = """あなたはユーザーの指示を分析して、スライドの重要度調整を判断するアシスタントです。
+
+ユーザーの指示から以下のパターンを識別してください：
+1. 「1枚目を詳しく」「最初のスライドをもっと充実」→ そのスライドの重要度を上げる (×1.5)
+2. 「3枚目は簡潔に」「スライド5を短く」→ そのスライドの重要度を下げる (×0.5)
+3. 「技術的な部分を詳しく」→ 該当するスライドの重要度を上げる
+4. 「概要部分は簡潔に」→ 該当するスライドの重要度を下げる
+5. 「全体的に詳しく」→ すべてのスライドの重要度を少し上げる (×1.2)
+6. 「全体的に簡潔に」→ すべてのスライドの重要度を少し下げる (×0.8)
+
+JSON形式で調整係数を返してください。調整が必要ないスライドは含めないでください。
+例: {"1": 1.5, "3": 0.5}"""
+        
+        user_prompt = f"""全体で{slide_count}枚のスライドがあります。
+
+ユーザーの指示: {user_instruction}
+
+この指示から、どのスライドの重要度を調整すべきか判断してください。
+調整が必要なスライドのみを返してください。"""
+        
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.3,
+                max_tokens=500,
+                response_format={"type": "json_object"}
+            )
+            
+            content = response.choices[0].message.content
+            if content:
+                adjustments = json.loads(content)
+                # 文字列キーを整数に変換
+                return {int(k): float(v) for k, v in adjustments.items()}
+            else:
+                return {}
+                
+        except Exception as e:
+            print(f"重要度調整分析エラー: {e}")
+            return {}
+    
+    def analyze_slide_importance(self, slide_texts: List[str], user_instruction: str = None) -> Dict[int, float]:
+        """各スライドの重要度を分析して時間配分の重みを返す"""
+        
+        system_prompt = """あなたはプレゼンテーション分析の専門家です。
+各スライドの内容を分析し、視聴者にとっての重要度を判断してください。
+
+重要度の基準：
+- タイトル/表紙スライド: 0.5 (簡潔に)
+- まとめ/終了スライド: 0.5 (簡潔に)
+- 概要/目次スライド: 0.7 (やや簡潔に)
+- 核心的な技術説明: 1.5 (詳しく)
+- 実装例/コード例: 1.3 (詳しく)
+- 一般的な説明: 1.0 (標準)
+- 補足情報: 0.8 (やや簡潔に)
+
+JSON形式で各スライドの重要度係数を返してください。
+例: {"1": 0.5, "2": 1.0, "3": 1.5, ...}"""
+        
+        slides_summary = "\n".join([
+            f"スライド{i+1}: {text[:200]}..." if len(text) > 200 else f"スライド{i+1}: {text}"
+            for i, text in enumerate(slide_texts)
+        ])
+        
+        user_prompt = f"""以下のスライド内容を分析し、各スライドの重要度係数を返してください：
+
+{slides_summary}
+
+各スライドについて、内容の重要性に基づいて0.5〜1.5の係数を割り当ててください。"""
+        
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.3,
+                max_tokens=1000,
+                response_format={"type": "json_object"}
+            )
+            
+            content = response.choices[0].message.content
+            if content:
+                importance_map = json.loads(content)
+                # 文字列キーを整数に変換
+                base_importance = {int(k): float(v) for k, v in importance_map.items()}
+            else:
+                # デフォルト値を返す
+                base_importance = {i+1: 1.0 for i in range(len(slide_texts))}
+                
+        except Exception as e:
+            print(f"重要度分析エラー: {e}")
+            # エラー時はすべて標準の重要度
+            base_importance = {i+1: 1.0 for i in range(len(slide_texts))}
+        
+        # ユーザー指示による調整を適用
+        if user_instruction:
+            adjustments = self.analyze_user_importance_adjustments(user_instruction, len(slide_texts))
+            print(f"ユーザー指示による重要度調整: {adjustments}")
+            
+            for slide_num, adjustment in adjustments.items():
+                if slide_num in base_importance:
+                    base_importance[slide_num] *= adjustment
+                    print(f"スライド{slide_num}の重要度を{adjustment}倍に調整: {base_importance[slide_num]}")
+        
+        return base_importance
+    
+    def extract_text_from_slides(self, slide_texts: List[str], additional_prompt: str = None, progress_callback=None, target_duration: int = 10, speaker_info: dict = None) -> Dict[str, List[Dict]]:
         """スライドのテキストから対話形式のナレーションを生成（スライドごとに個別生成）"""
         
         dialogue_data = {}
         
-        # 各スライドの目安時間を計算（秒に変換）
+        # まず各スライドの重要度を分析（ユーザー指示も考慮）
+        importance_map = self.analyze_slide_importance(slide_texts, additional_prompt)
+        
+        # 重要度の合計を計算
+        total_importance = sum(importance_map.get(i+1, 1.0) for i in range(len(slide_texts)))
+        
+        # 各スライドの目安時間を重要度に基づいて配分（秒に変換）
         target_seconds = target_duration * 60
-        seconds_per_slide = target_seconds / len(slide_texts)
+        slide_time_allocation = {}
+        for i in range(len(slide_texts)):
+            slide_num = i + 1
+            importance = importance_map.get(slide_num, 1.0)
+            slide_time_allocation[slide_num] = (target_seconds * importance) / total_importance
+            
+        print(f"スライド時間配分: {slide_time_allocation}")
         
         # 各スライドについて個別に対話を生成
         for i, slide_text in enumerate(slide_texts):
             slide_key = f"slide_{i+1}"
+            slide_num = i + 1
             
             # 進捗を通知
             if progress_callback:
@@ -107,27 +234,56 @@ class DialogueGenerator:
                 if prev_key in dialogue_data:
                     previous_dialogues[prev_key] = dialogue_data[prev_key]
             
+            # このスライドの割り当て時間を取得
+            allocated_seconds = slide_time_allocation.get(slide_num, target_seconds / len(slide_texts))
+            
+            # 重要度情報を追加プロンプトに含める
+            slide_importance = importance_map.get(slide_num, 1.0)
+            if slide_importance < 0.7:
+                importance_note = "【重要】このトピックは概要的な内容なので、簡潔にまとめてください。"
+            elif slide_importance > 1.3:
+                importance_note = "【重要】このトピックは核心的な内容なので、しっかりと詳しく説明してください。"
+            else:
+                importance_note = ""
+            
+            # 追加プロンプトと重要度情報を組み合わせる
+            if additional_prompt:
+                combined_additional_prompt = f"{additional_prompt}\n\n{importance_note}".strip()
+            else:
+                combined_additional_prompt = importance_note
+            
             slide_dialogue = self.generate_dialogue_for_single_slide(
                 slide_number=i+1,
                 slide_text=slide_text,
                 total_slides=len(slide_texts),
                 previous_dialogues=previous_dialogues,
-                additional_prompt=additional_prompt,
-                target_seconds_per_slide=seconds_per_slide
+                additional_prompt=combined_additional_prompt,
+                target_seconds_per_slide=allocated_seconds,
+                speaker_info=speaker_info
             )
             dialogue_data[slide_key] = slide_dialogue
         
         return dialogue_data
     
-    def regenerate_specific_slides(self, slide_texts: List[str], existing_dialogues: Dict[str, List[Dict]], slide_numbers: List[int], additional_prompt: str = None, progress_callback=None, instruction_history=None, target_duration: int = 10) -> Dict[str, List[Dict]]:
+    def regenerate_specific_slides(self, slide_texts: List[str], existing_dialogues: Dict[str, List[Dict]], slide_numbers: List[int], additional_prompt: str = None, progress_callback=None, instruction_history=None, target_duration: int = 10, speaker_info: dict = None) -> Dict[str, List[Dict]]:
         """特定のスライドのみ再生成"""
         
         # 既存の対話データをコピー
         dialogue_data = existing_dialogues.copy()
         
-        # 各スライドの目安時間を計算（秒に変換）
+        # 各スライドの重要度を分析（ユーザー指示も考慮）
+        importance_map = self.analyze_slide_importance(slide_texts, additional_prompt)
+        
+        # 重要度の合計を計算
+        total_importance = sum(importance_map.get(i+1, 1.0) for i in range(len(slide_texts)))
+        
+        # 各スライドの目安時間を重要度に基づいて配分（秒に変換）
         target_seconds = target_duration * 60
-        seconds_per_slide = target_seconds / len(slide_texts)
+        slide_time_allocation = {}
+        for i in range(len(slide_texts)):
+            slide_num = i + 1
+            importance = importance_map.get(slide_num, 1.0)
+            slide_time_allocation[slide_num] = (target_seconds * importance) / total_importance
         
         # 指定されたスライドのみ再生成
         for slide_num in slide_numbers:
@@ -159,36 +315,87 @@ class DialogueGenerator:
             else:
                 combined_prompt = additional_prompt
             
+            # 重要度情報を追加プロンプトに含める
+            slide_importance = importance_map.get(slide_num, 1.0)
+            if slide_importance < 0.7:
+                importance_note = "\n\n【重要】このトピックは概要的な内容なので、簡潔にまとめてください。"
+            elif slide_importance > 1.3:
+                importance_note = "\n\n【重要】このトピックは核心的な内容なので、しっかりと詳しく説明してください。"
+            else:
+                importance_note = ""
+            
+            if combined_prompt:
+                combined_prompt += importance_note
+            else:
+                combined_prompt = importance_note.strip()
+            
+            # このスライドの割り当て時間を取得
+            allocated_seconds = slide_time_allocation.get(slide_num, target_seconds / len(slide_texts))
+            
             slide_dialogue = self.generate_dialogue_for_single_slide(
                 slide_number=slide_num,
                 slide_text=slide_texts[i],
                 total_slides=len(slide_texts),
                 previous_dialogues=previous_dialogues,
                 additional_prompt=combined_prompt,
-                target_seconds_per_slide=seconds_per_slide
+                target_seconds_per_slide=allocated_seconds,
+                speaker_info=speaker_info
             )
             dialogue_data[slide_key] = slide_dialogue
         
         return dialogue_data
     
-    def generate_dialogue_for_single_slide(self, slide_number: int, slide_text: str, total_slides: int, previous_dialogues: Dict = None, additional_prompt: str = None, target_seconds_per_slide: float = 30, max_retries: int = 3) -> List[Dict]:
+    def generate_dialogue_for_single_slide(self, slide_number: int, slide_text: str, total_slides: int, previous_dialogues: Dict = None, additional_prompt: str = None, target_seconds_per_slide: float = 30, max_retries: int = 3, speaker_info: dict = None) -> List[Dict]:
         """単一スライドの対話を生成"""
         
         # スライドの種類を早めに判定（表紙・表題スライドかどうか）
         is_title_slide = False
         min_dialogues_for_this_slide = 8  # デフォルト値
         
-        system_prompt = """あなたは魅力的な教育動画を作成するプロの脚本家です。四国めたんとずんだもんによる楽しい対話を書いてください。
+        # スピーカー情報から名前と設定を取得
+        if speaker_info:
+            speaker1_name = speaker_info.get('speaker1', {}).get('name', '四国めたん')
+            speaker2_name = speaker_info.get('speaker2', {}).get('name', 'ずんだもん')
+        else:
+            speaker1_name = '四国めたん'
+            speaker2_name = 'ずんだもん'
+        
+        # キャラクター固有の話し方を定義
+        character_styles = {
+            'ずんだもん': '「〜なのだ」「〜だぞ」という語尾が特徴。驚きや興味を素直に表現する。',
+            '四国めたん': '親しみやすく丁寧な話し方。',
+            '春日部つむぎ': '元気で明るい話し方。「〜ですよ」「〜ですね」を使う。',
+            '波音リツ': 'クールで知的な話し方。',
+            '九州そら': '九州弁が混ざることがある。「〜ばい」「〜たい」など。',
+            '中国うさぎ': '「〜あるよ」「〜ね」など独特な話し方。',
+            'WhiteCUL': '感情豊かで「〜だよ！」「〜かな？」を使う。',
+            'さとうささら': '優しく柔らかい話し方。「〜ですわ」を使うことも。',
+            '小夜/SAYO': 'ミステリアスで落ち着いた話し方。',
+            '雨晴はう': 'のんびりとした話し方。「〜だねぇ」を使う。'
+        }
+        
+        speaker1_style = character_styles.get(speaker1_name, '親しみやすく丁寧な話し方。')
+        speaker2_style = character_styles.get(speaker2_name, '好奇心旺盛で率直な質問をする。')
+        
+        # f-stringで中括弧がある場合のエラーを防ぐため、format()を使用
+        system_prompt = """あなたは魅力的な教育動画を作成するプロの脚本家です。{speaker1_name}と{speaker2_name}による楽しい対話を書いてください。
 
 キャラクター設定：
-- 四国めたん（metan）: AI・プログラミングの専門家だが、親しみやすく説明が上手。時々専門的な知識を披露する。
-- ずんだもん（zundamon）: 好奇心旺盛で率直な質問をする。「〜なのだ」という語尾が特徴。驚きや興味を素直に表現する。
+- {speaker1_name}（speaker1）: AI・プログラミングの専門家だが、親しみやすく説明が上手。時々専門的な知識を披露する。{speaker1_style}
+- {speaker2_name}（speaker2）: 好奇心旺盛で率直な質問をする。{speaker2_style}""".format(
+            speaker1_name=speaker1_name,
+            speaker2_name=speaker2_name,
+            speaker1_style=speaker1_style,
+            speaker2_style=speaker2_style
+        )
+        
+        system_prompt += """
 
 対話のルール：
 1. 自然で生き生きとした会話にしてください
-2. ずんだもんは「〜なのだ」「〜だぞ」という語尾を使う
-3. めたんは専門知識を分かりやすく、時には例え話で説明する
-4. 1つの発話は2〜4文程度（内容を充実させるため、短すぎないように）
+2. 各キャラクターの話し方の特徴を守ってください
+3. speaker1は専門知識を分かりやすく、時には例え話で説明する
+4. 1つの発話は2〜3文程度にまとめる（内容は充実させつつ、簡潔に）
 5. 感嘆詞（「へえ〜」「すごい！」「なるほど」など）を自然に入れる
 6. 新しい発見や驚きがある展開にする
 7. 聞き手（視聴者）が「もっと知りたい」と思うような会話にする
@@ -215,16 +422,22 @@ class DialogueGenerator:
 
 出力形式：
 必ず以下のような有効なJSON形式で出力してください。コードブロックや余計な文字は含めないでください。
+speakerは必ず"speaker1"か"speaker2"を使用してください。
 {
   "dialogue": [
-    {"speaker": "metan", "text": "今日はクロードコードの魅力について話すよ！"},
-    {"speaker": "zundamon", "text": "おお、楽しみなのだ！クロードコードって何がすごいのだ？"}
+    {"speaker": "speaker1", "text": "今日はクロードコードの魅力について話すよ！"},
+    {"speaker": "speaker2", "text": "おお、楽しみ！クロードコードって何がすごいの？"}
   ]
 }"""
         
-        user_prompt = f"""トピック{slide_number}/{total_slides}の内容について、めたんとずんだもんの魅力的な対話を作成してください。
+        user_prompt = """トピック{slide_number}/{total_slides}の内容について、{speaker1_name}と{speaker2_name}の魅力的な対話を作成してください。
 
-"""
+""".format(
+            slide_number=slide_number,
+            total_slides=total_slides,
+            speaker1_name=speaker1_name,
+            speaker2_name=speaker2_name
+        )
         
         # 過去の対話がある場合は追加（直近2スライド分のみ）
         if previous_dialogues:
@@ -233,13 +446,13 @@ class DialogueGenerator:
             recent_slides = sorted(previous_dialogues.keys())[-2:]
             for prev_slide in recent_slides:
                 prev_dialogue = previous_dialogues[prev_slide]
-                user_prompt += f"\n{prev_slide}:\n"
+                user_prompt += "\n{}:\n".format(prev_slide)
                 for dialogue in prev_dialogue:
-                    user_prompt += f"- {dialogue['speaker']}: {dialogue['text']}\n"
+                    user_prompt += "- {}: {}\n".format(dialogue['speaker'], dialogue['text'])
             user_prompt += "\n"
         
-        user_prompt += f"""現在扱うトピック（{slide_number}番目）の内容：
-"""
+        user_prompt += """現在扱うトピック（{}番目）の内容：
+""".format(slide_number)
         user_prompt += slide_text
         
         # スライドの種類を判定（表紙・表題スライドかどうか）
@@ -257,25 +470,31 @@ class DialogueGenerator:
         # 対話回数の設定（目安時間から逆算）
         # 日本語の読み上げ速度を約330文字/分として計算
         chars_per_second = 5.5
-        # 各発話の平均文字数を40文字と仮定
-        avg_chars_per_utterance = 40
+        # 各発話の平均文字数を実際的な値に設定（GPT-4は2-4文で80-100文字程度生成する傾向）
+        avg_chars_per_utterance = 90
         # スライド間の間隔0.5秒、発話間の間隔0.3秒を考慮
-        pause_time = 0.5 + (target_seconds_per_slide / 10) * 0.3  # 概算
+        # 各スライドの発話数を推定（例：10発話なら3秒の間隔）
+        estimated_utterances_raw = (target_seconds_per_slide * chars_per_second) / avg_chars_per_utterance
+        pause_time = 0.5 + (estimated_utterances_raw * 0.3)  # スライド間隔 + 発話間隔
         
-        # 利用可能な秒数から発話数を計算
+        # 利用可能な秒数から発話数を再計算
         available_seconds = target_seconds_per_slide - pause_time
-        estimated_utterances = int((available_seconds * chars_per_second) / avg_chars_per_utterance)
+        estimated_utterances = max(2, int((available_seconds * chars_per_second) / avg_chars_per_utterance))
         
-        # 最小値と最大値を設定
+        # 最小値と最大値を設定（時間制約を厳守）
         if is_title_slide:
-            min_utterances = max(4, min(6, estimated_utterances))
+            # タイトルスライドは短めに
+            min_utterances = min(4, estimated_utterances)
             max_utterances = min(6, estimated_utterances)
             dialogue_count_instruction = f"{min_utterances}〜{max_utterances}個の発話で簡潔に"
             min_dialogues_for_this_slide = min_utterances
         else:
-            min_utterances = max(8, int(estimated_utterances * 0.8))
+            # 通常スライドは計算値を尊重（最低値の強制をしない）
+            min_utterances = max(2, int(estimated_utterances * 0.8))
             max_utterances = int(estimated_utterances * 1.2)
-            dialogue_count_instruction = f"{min_utterances}〜{max_utterances}個の発話を作成（目安時間約{int(target_seconds_per_slide)}秒）"
+            # 各発話の目安文字数も明示
+            chars_per_utterance_instruction = int(avg_chars_per_utterance * 0.8)
+            dialogue_count_instruction = "{}〜{}個の発話を作成（各発話は{}文字程度、目安時間約{}秒）".format(min_utterances, max_utterances, chars_per_utterance_instruction, int(target_seconds_per_slide))
             min_dialogues_for_this_slide = min_utterances
             
         # 追加プロンプトで対話回数が明示的に指定されている場合は上書き
@@ -283,16 +502,16 @@ class DialogueGenerator:
             match = re.search(r'(\d+)回', additional_prompt)
             if match:
                 count = int(match.group(1))
-                dialogue_count_instruction = f"{count}回の掛け合い（{count*2}個の発話）を作成"
+                dialogue_count_instruction = "{}回の掛け合い（{}個の発話）を作成".format(count, count*2)
                 min_dialogues_for_this_slide = count * 2
             else:
                 dialogue_count_instruction = "4〜6回の会話のやり取りを作成"
                 min_dialogues_for_this_slide = 4
         
-        user_prompt += f"""
+        user_prompt += """
 
 重要な要望：
-- このトピックについて{dialogue_count_instruction}
+- このトピックについて{}
 - 会話は具体的で内容が濃いものにする（単なる相槌ではなく、情報を含む発話）
 - ずんだもんは「〜なのだ」語尾を必ず使用し、具体的な質問や感想を述べる
 - めたんは専門知識を噛み砕いて、例え話や具体例を交えて丁寧に説明
@@ -308,21 +527,24 @@ class DialogueGenerator:
 - 単純な「なるほど」「そうなのだ」だけの返答は避ける
 - 視聴者が理解を深められるよう、段階的に説明を展開
 
-{f'''特別な注意：
+{}
+
+必ず有効なJSON形式（{{"dialogue": [...]}}の形式）で出力してください。""".format(
+            dialogue_count_instruction,
+            '''特別な注意：
 これは表紙・タイトルページなので、簡潔に導入してください：
 - 挨拶と今日のテーマの紹介に焦点を当てる
 - 詳細は後で説明することを示唆する（「後のスライド」とは言わない）
 - 期待感を高める内容にする''' if is_title_slide else '''特別な注意：
-これは{slide_number}番目のトピックです：
+これは{}番目のトピックです：
 - 「こんにちは」「今日は」「今回は」などの挨拶は絶対に使わないでください
 - 前のトピックから自然に話を続けてください
-- いきなり本題から入って構いません'''}
-
-必ず有効なJSON形式（{{"dialogue": [...]}}の形式）で出力してください。"""
+- いきなり本題から入って構いません'''.format(slide_number)
+        )
         
         # 追加プロンプトがある場合は付加
         if additional_prompt:
-            user_prompt += f"\n\n追加の指示：\n{additional_prompt}"
+            user_prompt += "\n\n追加の指示：\n{}".format(additional_prompt)
 
         # リトライループ
         for attempt in range(max_retries):
@@ -467,7 +689,7 @@ class DialogueGenerator:
         
         # 追加プロンプトがある場合は付加
         if additional_prompt:
-            user_prompt += f"\n\n追加の指示：\n{additional_prompt}"
+            user_prompt += "\n\n追加の指示：\n{}".format(additional_prompt)
 
         try:
             response = self.client.chat.completions.create(

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Response
 import asyncio
 import threading
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +11,8 @@ import json
 from pathlib import Path
 import shutil
 import os
+import csv
+import io
 
 # モデル定義
 class JobStatus(BaseModel):
@@ -77,7 +79,11 @@ from fastapi import Form
 async def upload_pdf(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    target_duration: int = Form(10)  # デフォルト10分
+    target_duration: int = Form(10),  # デフォルト10分
+    speaker1_id: int = Form(2),
+    speaker1_name: str = Form("四国めたん"),
+    speaker2_id: int = Form(3),
+    speaker2_name: str = Form("ずんだもん")
 ):
     """PDFファイルをアップロードしてジョブを作成"""
     
@@ -107,14 +113,24 @@ async def upload_pdf(
     )
     jobs_db[job_id] = job_status
     
-    # 目安時間をファイルに保存
+    # メタデータを保存（目安時間とキャラクター設定）
+    metadata = {
+        "target_duration": target_duration,
+        "speaker1": {"id": speaker1_id, "name": speaker1_name},
+        "speaker2": {"id": speaker2_id, "name": speaker2_name}
+    }
+    metadata_file = job_dir / "metadata.json"
+    with open(metadata_file, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, ensure_ascii=False, indent=2)
+    
+    # 目安時間をファイルに保存（後方互換性のため）
     target_duration_file = job_dir / "target_duration.txt"
     with open(target_duration_file, "w") as f:
         f.write(str(target_duration))
     
     # バックグラウンドでPDF変換を実行（本番ではBatchジョブ起動）
     def run_in_thread():
-        asyncio.run(convert_pdf_to_slides(job_id, str(pdf_path), target_duration))
+        asyncio.run(convert_pdf_to_slides(job_id, str(pdf_path), target_duration, metadata))
     
     thread = threading.Thread(target=run_in_thread)
     thread.daemon = True
@@ -339,6 +355,23 @@ async def get_dialogue(job_id: str):
         }
     }
 
+@app.get("/api/jobs/{job_id}/metadata")
+async def get_job_metadata(job_id: str):
+    """ジョブのメタデータを取得"""
+    
+    metadata_path = UPLOAD_DIR / job_id / "metadata.json"
+    
+    if not metadata_path.exists():
+        # デフォルト値を返す
+        return {
+            "speaker1": {"id": 2, "name": "四国めたん"},
+            "speaker2": {"id": 3, "name": "ずんだもん"},
+            "target_duration": 10
+        }
+    
+    with open(metadata_path, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
 @app.get("/api/jobs/{job_id}/instruction-history")
 async def get_instruction_history(job_id: str):
     """指示履歴を取得"""
@@ -346,6 +379,218 @@ async def get_instruction_history(job_id: str):
     
     history = InstructionHistory(job_id, Path.cwd())
     return {"history": history.history}
+
+@app.get("/api/jobs/{job_id}/dialogue/csv")
+async def download_dialogue_csv(job_id: str):
+    """対話スクリプトをCSV形式でダウンロード"""
+    
+    dialogue_path = Path.cwd() / "data" / job_id / "dialogue_narration_original.json"
+    
+    if not dialogue_path.exists():
+        raise HTTPException(status_code=404, detail="対話スクリプトが見つかりません")
+    
+    with open(dialogue_path, 'r', encoding='utf-8') as f:
+        dialogue_data = json.load(f)
+    
+    # CSV作成
+    csv_buffer = io.StringIO()
+    csv_writer = csv.writer(csv_buffer, quoting=csv.QUOTE_MINIMAL)
+    
+    # ヘッダー
+    csv_writer.writerow(['会話番号', 'スライド番号', '発話者名', 'テキスト'])
+    
+    # データ
+    conversation_num = 0
+    for slide_key in sorted(dialogue_data.keys(), key=lambda x: int(x.split('_')[1])):
+        slide_num = slide_key.split('_')[1]
+        dialogues = dialogue_data[slide_key]
+        
+        for dialogue in dialogues:
+            conversation_num += 1
+            # メタデータから現在のキャラクター設定を取得
+            metadata_path = Path.cwd() / "uploads" / job_id / "metadata.json"
+            speaker1_name = "四国めたん"
+            speaker2_name = "ずんだもん"
+            
+            if metadata_path.exists():
+                with open(metadata_path, "r", encoding="utf-8") as f:
+                    metadata = json.load(f)
+                    speaker1_name = metadata.get("speaker1", {}).get("name", "四国めたん")
+                    speaker2_name = metadata.get("speaker2", {}).get("name", "ずんだもん")
+            
+            # speaker1/speaker2形式の場合と、古いmetan/zundamon形式の両方に対応
+            if dialogue['speaker'] == 'speaker1' or dialogue['speaker'] == 'metan':
+                speaker_display = speaker1_name
+            elif dialogue['speaker'] == 'speaker2' or dialogue['speaker'] == 'zundamon':
+                speaker_display = speaker2_name
+            else:
+                speaker_display = dialogue['speaker']  # フォールバック
+            csv_writer.writerow([
+                conversation_num,
+                slide_num,
+                speaker_display,
+                dialogue['text']
+            ])
+    
+    # CSVをバイトに変換
+    csv_content = csv_buffer.getvalue().encode('utf-8-sig')  # BOM付きUTF-8
+    
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=dialogue_{job_id}.csv"
+        }
+    )
+
+@app.post("/api/jobs/{job_id}/dialogue/csv")
+async def upload_dialogue_csv(
+    job_id: str,
+    file: UploadFile = File(...)
+):
+    """CSVファイルから対話スクリプトをアップロード"""
+    
+    if job_id not in jobs_db:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    
+    # ファイル検証
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="CSVファイルのみ対応しています")
+    
+    # CSVを読み込む
+    content = await file.read()
+    
+    # エンコーディングを検出して読み込み
+    try:
+        # まずUTF-8-BOMを試す
+        csv_text = content.decode('utf-8-sig')
+    except UnicodeDecodeError:
+        try:
+            # 次にUTF-8を試す
+            csv_text = content.decode('utf-8')
+        except UnicodeDecodeError:
+            try:
+                # Shift-JISを試す
+                csv_text = content.decode('shift-jis')
+            except UnicodeDecodeError:
+                try:
+                    # CP932（Windows-31J）を試す
+                    csv_text = content.decode('cp932')
+                except UnicodeDecodeError:
+                    raise HTTPException(status_code=400, detail="CSVファイルのエンコーディングが不正です（UTF-8、Shift-JIS、またはCP932を使用してください）")
+    
+    # CSVをパース
+    csv_reader = csv.reader(io.StringIO(csv_text))
+    
+    # ヘッダーをスキップ
+    try:
+        header = next(csv_reader)
+    except StopIteration:
+        raise HTTPException(status_code=400, detail="CSVファイルが空です")
+    
+    # データを検証して読み込み
+    dialogue_data = {}
+    errors = []
+    line_num = 1  # ヘッダーの次から
+    
+    for row in csv_reader:
+        line_num += 1
+        
+        # 列数チェック
+        if len(row) != 4:
+            errors.append(f"行{line_num}: 列数が不正です（4列必要ですが{len(row)}列あります）")
+            continue
+        
+        conversation_num, slide_num, speaker_display, text = row
+        
+        # 会話番号の検証（順番チェックはしない）
+        try:
+            conversation_num_int = int(conversation_num)
+            if conversation_num_int < 1:
+                errors.append(f"行{line_num}: 会話番号は1以上である必要があります")
+                continue
+        except ValueError:
+            errors.append(f"行{line_num}: 会話番号が数値ではありません: {conversation_num}")
+            continue
+        
+        # スライド番号の検証
+        try:
+            slide_num_int = int(slide_num)
+            if slide_num_int < 1:
+                errors.append(f"行{line_num}: スライド番号は1以上である必要があります")
+                continue
+        except ValueError:
+            errors.append(f"行{line_num}: スライド番号が数値ではありません: {slide_num}")
+            continue
+        
+        # 話者の検証と変換
+        # メタデータから現在のキャラクター設定を取得
+        metadata_path = UPLOAD_DIR / job_id / "metadata.json"
+        speaker1_name = "四国めたん"
+        speaker2_name = "ずんだもん"
+        
+        if metadata_path.exists():
+            with open(metadata_path, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+                speaker1_name = metadata.get("speaker1", {}).get("name", "四国めたん")
+                speaker2_name = metadata.get("speaker2", {}).get("name", "ずんだもん")
+        
+        if speaker_display.strip() == speaker1_name:
+            speaker = 'speaker1'
+        elif speaker_display.strip() == speaker2_name:
+            speaker = 'speaker2'
+        else:
+            errors.append(f"行{line_num}: 発話者名が不正です（'{speaker1_name}'または'{speaker2_name}'である必要があります）: '{speaker_display}'")
+            continue
+        
+        # テキストの検証
+        if not text.strip():
+            errors.append(f"行{line_num}: テキストが空です")
+            continue
+        
+        # スライドキーを生成
+        slide_key = f"slide_{slide_num_int}"
+        
+        # データを追加
+        if slide_key not in dialogue_data:
+            dialogue_data[slide_key] = []
+        
+        dialogue_data[slide_key].append({
+            "speaker": speaker,
+            "text": text.strip()
+        })
+    
+    # エラーがある場合は返す
+    if errors:
+        error_message = "CSVファイルに以下のエラーがあります:\n" + "\n".join(errors[:10])  # 最初の10個のエラーのみ
+        if len(errors) > 10:
+            error_message += f"\n... 他{len(errors)-10}個のエラー"
+        raise HTTPException(status_code=400, detail=error_message)
+    
+    # 対話データがない場合
+    if not dialogue_data:
+        raise HTTPException(status_code=400, detail="有効な対話データが含まれていません")
+    
+    # データを保存
+    data_dir = Path.cwd() / "data" / job_id
+    data_dir.mkdir(exist_ok=True)
+    
+    dialogue_path = data_dir / "dialogue_narration_original.json"
+    with open(dialogue_path, 'w', encoding='utf-8') as f:
+        json.dump(dialogue_data, f, ensure_ascii=False, indent=2)
+    
+    # 互換性のためkatakanaファイルも同じ内容で保存
+    katakana_path = data_dir / "dialogue_narration_katakana.json"
+    with open(katakana_path, 'w', encoding='utf-8') as f:
+        json.dump(dialogue_data, f, ensure_ascii=False, indent=2)
+    
+    # ジョブステータスを更新
+    job = jobs_db[job_id]
+    job.status = "dialogue_ready"
+    job.message = "CSVから対話スクリプトをインポートしました"
+    job.updated_at = datetime.now()
+    
+    return {"message": f"対話スクリプトをインポートしました（{len(dialogue_data)}スライド）", "slide_count": len(dialogue_data)}
 
 @app.put("/api/jobs/{job_id}/dialogue")
 async def update_dialogue(
@@ -419,6 +664,74 @@ async def list_jobs():
     """全ジョブのリストを取得"""
     return list(jobs_db.values())
 
+@app.get("/api/speakers")
+async def get_speakers():
+    """利用可能なVOICEVOXスピーカー一覧を取得"""
+    import requests
+    
+    voicevox_url = os.getenv("VOICEVOX_URL", "http://localhost:50021")
+    
+    try:
+        response = requests.get(f"{voicevox_url}/speakers")
+        response.raise_for_status()
+        speakers = response.json()
+        
+        # フロントエンドで使いやすい形式に整形
+        formatted_speakers = []
+        for speaker in speakers:
+            for style in speaker['styles']:
+                formatted_speakers.append({
+                    "speaker_name": speaker['name'],
+                    "speaker_uuid": speaker['speaker_uuid'],
+                    "style_name": style['name'],
+                    "style_id": style['id'],
+                    "display_name": f"{speaker['name']} ({style['name']})"
+                })
+        
+        return formatted_speakers
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"VOICEVOXへの接続に失敗しました: {str(e)}")
+
+class VoiceSampleRequest(BaseModel):
+    speaker_id: int
+    text: str
+
+@app.post("/api/voice-sample")
+async def generate_voice_sample(request: VoiceSampleRequest):
+    """指定したスピーカーでサンプル音声を生成"""
+    import requests
+    
+    voicevox_url = os.getenv("VOICEVOX_URL", "http://localhost:50021")
+    
+    try:
+        # 音声クエリの作成
+        query_response = requests.post(
+            f"{voicevox_url}/audio_query",
+            params={
+                "text": request.text,
+                "speaker": request.speaker_id
+            }
+        )
+        query_response.raise_for_status()
+        
+        # 音声合成
+        synthesis_response = requests.post(
+            f"{voicevox_url}/synthesis",
+            params={"speaker": request.speaker_id},
+            json=query_response.json()
+        )
+        synthesis_response.raise_for_status()
+        
+        return Response(
+            content=synthesis_response.content,
+            media_type="audio/wav",
+            headers={
+                "Content-Disposition": f"inline; filename=sample_{request.speaker_id}.wav"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"音声生成に失敗しました: {str(e)}")
+
 @app.delete("/api/jobs/{job_id}")
 async def delete_job(job_id: str):
     """ジョブを削除"""
@@ -446,7 +759,7 @@ from api.core.audio_generator import AudioGenerator
 from api.core.video_creator import VideoCreator
 
 # バックグラウンドタスク（本番ではAWS Batchで実行）
-async def convert_pdf_to_slides(job_id: str, pdf_path: str, target_duration: int = 10):
+async def convert_pdf_to_slides(job_id: str, pdf_path: str, target_duration: int = 10, metadata: dict = None):
     """PDFをスライド画像に変換"""
     try:
         job = jobs_db[job_id]
@@ -468,8 +781,21 @@ async def convert_pdf_to_slides(job_id: str, pdf_path: str, target_duration: int
             job.progress = 15 + int(progress * 0.8)  # 15-95%の範囲で進捗表示
             job.updated_at = datetime.now()
         
-        # 対話データを生成（目安時間を渡す）
-        dialogue_path = processor.generate_dialogue_from_pdf(pdf_path, progress_callback=update_progress, target_duration=target_duration)
+        # メタデータがある場合はスピーカー情報を取得
+        speaker_info = None
+        if metadata:
+            speaker_info = {
+                'speaker1': metadata.get('speaker1'),
+                'speaker2': metadata.get('speaker2')
+            }
+        
+        # 対話データを生成（目安時間とスピーカー情報を渡す）
+        dialogue_path = processor.generate_dialogue_from_pdf(
+            pdf_path, 
+            progress_callback=update_progress, 
+            target_duration=target_duration,
+            speaker_info=speaker_info
+        )
         
         job.status = "slides_ready"
         job.progress = 100
@@ -513,12 +839,26 @@ async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] =
             job.progress = int(progress * 0.95)
             job.updated_at = datetime.now()
         
-        # 目安時間を読み込む
+        # メタデータを読み込む
+        metadata = None
+        speaker_info = None
         target_duration = 10  # デフォルト
-        target_duration_file = job_dir / "target_duration.txt"
-        if target_duration_file.exists():
-            with open(target_duration_file, "r") as f:
-                target_duration = int(f.read().strip())
+        
+        metadata_file = job_dir / "metadata.json"
+        if metadata_file.exists():
+            with open(metadata_file, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+                target_duration = metadata.get("target_duration", 10)
+                speaker_info = {
+                    'speaker1': metadata.get('speaker1'),
+                    'speaker2': metadata.get('speaker2')
+                }
+        else:
+            # 互換性のため古い形式も確認
+            target_duration_file = job_dir / "target_duration.txt"
+            if target_duration_file.exists():
+                with open(target_duration_file, "r") as f:
+                    target_duration = int(f.read().strip())
         
         if is_regeneration and additional_prompt:
             from api.core.text_extractor import TextExtractor
@@ -556,7 +896,8 @@ async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] =
                 additional_prompt,
                 progress_callback=update_progress,
                 instruction_history=history,
-                target_duration=target_duration
+                target_duration=target_duration,
+                speaker_info=speaker_info
             )
             
             # データを保存
@@ -577,7 +918,8 @@ async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] =
                 pdf_path, 
                 additional_prompt,
                 progress_callback=update_progress,
-                target_duration=target_duration
+                target_duration=target_duration,
+                speaker_info=speaker_info
             )
         
         # 完了
@@ -597,35 +939,55 @@ async def generate_complete_video(job_id: str):
     try:
         job = jobs_db[job_id]
         
-        # 1. PDFをスライドに変換
-        job.message = "PDFをスライドに変換中..."
-        job.progress = 20
-        job.updated_at = datetime.now()
-        
-        # PDFファイルパスを取得
-        job_dir = UPLOAD_DIR / job_id
-        pdf_files = list(job_dir.glob("*.pdf"))
-        if not pdf_files:
-            raise Exception("PDFファイルが見つかりません")
-        
-        pdf_path = str(pdf_files[0])
-        
-        # PDFを処理
-        processor = PDFProcessor(job_id, Path.cwd())
-        slide_count = processor.convert_pdf_to_slides(pdf_path)
-        
-        # 2. 対話データ生成
-        job.message = "対話スクリプトを生成中..."
-        job.progress = 40
-        job.updated_at = datetime.now()
-        
-        # 進捗更新用のコールバック
-        def update_progress(message: str, progress: float):
-            job.message = message
-            job.progress = 40 + int(progress * 0.2)  # 40-60%の範囲で進捗表示
+        # 1. PDFをスライドに変換（必要な場合のみ）
+        slides_dir = Path.cwd() / "slides" / job_id
+        if not slides_dir.exists() or not list(slides_dir.glob("slide_*.png")):
+            job.message = "PDFをスライドに変換中..."
+            job.progress = 20
             job.updated_at = datetime.now()
+            
+            # PDFファイルパスを取得
+            job_dir = UPLOAD_DIR / job_id
+            pdf_files = list(job_dir.glob("*.pdf"))
+            if not pdf_files:
+                raise Exception("PDFファイルが見つかりません")
+            
+            pdf_path = str(pdf_files[0])
+            
+            # PDFを処理
+            processor = PDFProcessor(job_id, Path.cwd())
+            slide_count = processor.convert_pdf_to_slides(pdf_path)
+        else:
+            # 既存のスライドを使用
+            job.message = "既存のスライドを使用中..."
+            job.progress = 20
+            job.updated_at = datetime.now()
+            slide_count = len(list(slides_dir.glob("slide_*.png")))
+            print(f"既存のスライドを使用: {slide_count}枚")
         
-        dialogue_path = processor.generate_dialogue_from_pdf(pdf_path, progress_callback=update_progress)
+        # 2. 対話データの確認・生成
+        data_dir = Path.cwd() / "data" / job_id
+        dialogue_path = data_dir / "dialogue_narration_original.json"
+        
+        # 既に対話データが存在するかチェック
+        if not dialogue_path.exists():
+            job.message = "対話スクリプトを生成中..."
+            job.progress = 40
+            job.updated_at = datetime.now()
+            
+            # 進捗更新用のコールバック
+            def update_progress(message: str, progress: float):
+                job.message = message
+                job.progress = 40 + int(progress * 0.2)  # 40-60%の範囲で進捗表示
+                job.updated_at = datetime.now()
+            
+            dialogue_path = processor.generate_dialogue_from_pdf(pdf_path, progress_callback=update_progress)
+        else:
+            # 既存の対話データを使用
+            job.message = "既存の対話スクリプトを使用中..."
+            job.progress = 60
+            job.updated_at = datetime.now()
+            print(f"既存の対話データを使用: {dialogue_path}")
         
         # 3. 音声生成
         job.message = "音声を生成中..."

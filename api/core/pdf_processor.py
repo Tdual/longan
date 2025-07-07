@@ -25,19 +25,20 @@ class PDFProcessor:
         slide_paths = converter.convert_pdf_to_images(pdf_path)
         return len(slide_paths)
     
-    def generate_dialogue_from_pdf(self, pdf_path: str, additional_prompt: str = None, progress_callback=None, target_duration: int = 10) -> str:
+    def generate_dialogue_from_pdf(self, pdf_path: str, additional_prompt: str = None, progress_callback=None, target_duration: int = 10, speaker_info: dict = None) -> str:
         """PDFから対話データを生成"""
         # 1. PDFからテキストを抽出
         text_extractor = TextExtractor()
         slide_texts = text_extractor.extract_text_from_pdf(pdf_path)
         
-        # 2. 対話を生成（目安時間を渡す）
+        # 2. 対話を生成（目安時間とスピーカー情報を渡す）
         dialogue_generator = DialogueGenerator()
         dialogue_data = dialogue_generator.extract_text_from_slides(
             slide_texts, 
             additional_prompt,
             progress_callback,
-            target_duration
+            target_duration,
+            speaker_info
         )
         
         # 3. データを保存（AIが既にカタカナで生成しているため変換不要）
