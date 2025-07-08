@@ -112,3 +112,6 @@ docker-compose.simple.yml
 
 # Bug reports and recommendations
 bug_report_and_recommendations.md
+
+# Temporary test scripts
+get_voicevox_speakers.py

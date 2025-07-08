@@ -9,6 +9,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent / "src"))
 from pdf_converter import PDFConverter
 from .text_extractor import TextExtractor
 from .dialogue_generator import DialogueGenerator
+from .dialogue_refiner import DialogueRefiner
 
 class PDFProcessor:
     def __init__(self, job_id: str, base_dir: Path):
@@ -41,14 +42,24 @@ class PDFProcessor:
             speaker_info
         )
         
-        # 3. データを保存（AIが既にカタカナで生成しているため変換不要）
+        # 3. 全体調整とカタカナ変換を自動実行
+        if progress_callback:
+            progress_callback("全体調整とカタカナ変換を実行中...", 95)
+        
+        dialogue_refiner = DialogueRefiner()
+        refined_dialogue_data = dialogue_refiner.refine_and_convert_to_katakana(
+            dialogue_data,
+            speaker_info
+        )
+        
+        # 4. データを保存
         original_dialogue_path = self.data_dir / "dialogue_narration_original.json"
         with open(original_dialogue_path, 'w', encoding='utf-8') as f:
-            json.dump(dialogue_data, f, ensure_ascii=False, indent=2)
+            json.dump(refined_dialogue_data, f, ensure_ascii=False, indent=2)
         
         # 互換性のためkatakanaファイルも同じ内容で保存
         katakana_path = self.data_dir / "dialogue_narration_katakana.json"
         with open(katakana_path, 'w', encoding='utf-8') as f:
-            json.dump(dialogue_data, f, ensure_ascii=False, indent=2)
+            json.dump(refined_dialogue_data, f, ensure_ascii=False, indent=2)
         
         return str(original_dialogue_path)

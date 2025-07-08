@@ -49,10 +49,67 @@
 	let availableSpeakers: any[] = [];
 	let selectedSpeaker1Id = 2;
 	let selectedSpeaker2Id = 3;
+	let speaker1Speed = 1.0;
+	let speaker2Speed = 1.0;
 	let speakersLoading = false;
 	let showRecommendations = false;
 	let playingSampleId: number | null = null;
 	let currentJobMetadata: any = null; // 現在のジョブのメタデータ
+	let modalImageUrl: string | null = null; // モーダル表示用の画像URL
+	let isUpdatingDialogue = false; // 対話データ更新中フラグ
+	let selectedConversationStyle = 'friendly'; // 選択された会話スタイル
+	
+	// 会話スタイルの定義
+	const conversationStyles = [
+		{
+			id: 'radio',
+			name: '🎤 ラジオ風',
+			description: 'リスナーに語りかけるような親しみやすいスタイル',
+			prompt: 'ラジオ番組のようにリスナーに語りかけるスタイルで。「リスナーのみなさん」「いかがでしょうか」などの表現を使い、暖かく親しみやすい雰囲気で。'
+		},
+		{
+			id: 'business',
+			name: '💼 ビジネスライク',
+			description: 'プロフェッショナルで信頼感のあるスタイル',
+			prompt: 'ビジネスシーンに適したプロフェッショナルなスタイルで。敬語を適切に使い、論理的で説得力のある説明を心がけて。'
+		},
+		{
+			id: 'friendly',
+			name: '😊 友達風',
+			description: 'カジュアルでフレンドリーなスタイル',
+			prompt: '友達同士が話しているようなカジュアルなスタイルで。「だよね～」「っていうか」など、日常会話のような表現で。'
+		},
+		{
+			id: 'educational',
+			name: '🎓 教育番組風',
+			description: '子供向け教育番組のようなスタイル',
+			prompt: '教育番組のようにわかりやすく、楽しく学べるスタイルで。「みんなも一緒に考えてみよう！」「すごい発見だね！」など、前向きな表現で。'
+		},
+		{
+			id: 'news',
+			name: '📰 ニュース番組風',
+			description: 'キャスターが伝えるようなスタイル',
+			prompt: 'ニュース番組のように事実を正確に伝えるスタイルで。「さて、続いては」「詳しく見ていきましょう」など、フォーマルな表現で。'
+		},
+		{
+			id: 'podcast',
+			name: '🎧 ポッドキャスト風',
+			description: 'ディープな話題を探求するスタイル',
+			prompt: 'ポッドキャストのように深い話題を探求するスタイルで。「これは興味深い点ですね」「もう少し掘り下げてみると」など、思考を深める表現で。'
+		},
+		{
+			id: 'variety',
+			name: '🎨 バラエティ番組風',
+			description: '明るく楽しいエンターテイメント風',
+			prompt: 'バラエティ番組のように明るく楽しいスタイルで。ツッコミやボケ、驚きのリアクションなどを取り入れて。「えー！」「マジで！？」など。'
+		},
+		{
+			id: 'commentary',
+			name: '🎮 実況解説風',
+			description: 'スポーツ実況のような臨場感あるスタイル',
+			prompt: 'スポーツ実況のように臨場感あふれるスタイルで。「おっと、これは！」「素晴らしい展開です！」など、テンポよく盛り上げて。'
+		}
+	];
 	
 	// ビジネス向けおすすめ組み合わせ
 	const businessRecommendations = [
@@ -94,13 +151,34 @@
 		loadSpeakers();
 	});
 	
+	// スピーカーが変更されたときに速度を自動調整
+	$: if (availableSpeakers.length > 0 && selectedSpeaker1Id) {
+		const speaker1 = availableSpeakers.find(s => s.style_id === selectedSpeaker1Id);
+		if (speaker1 && speaker1.speaker_name === '九州そら') {
+			speaker1Speed = 1.5;
+		} else if (speaker1 && speaker1.speaker_name !== '九州そら' && speaker1Speed === 1.5) {
+			// 九州そら以外が選択された場合は1.0に戻す
+			speaker1Speed = 1.0;
+		}
+	}
+	
+	$: if (availableSpeakers.length > 0 && selectedSpeaker2Id) {
+		const speaker2 = availableSpeakers.find(s => s.style_id === selectedSpeaker2Id);
+		if (speaker2 && speaker2.speaker_name === '九州そら') {
+			speaker2Speed = 1.5;
+		} else if (speaker2 && speaker2.speaker_name !== '九州そら' && speaker2Speed === 1.5) {
+			// 九州そら以外が選択された場合は1.0に戻す
+			speaker2Speed = 1.0;
+		}
+	}
+	
 	function applyRecommendation(recommendation: any) {
 		selectedSpeaker1Id = recommendation.speaker1.id;
 		selectedSpeaker2Id = recommendation.speaker2.id;
 		showRecommendations = false;
 	}
 	
-	async function playVoiceSample(speakerId: number, speakerName: string) {
+	async function playVoiceSample(speakerId: number, speakerName: string, speed: number) {
 		try {
 			playingSampleId = speakerId;
 			
@@ -115,6 +193,8 @@
 				},
 				body: JSON.stringify({
 					speaker_id: speakerId,
+					speaker_name: speakerName,
+					speed: speed,
 					text: sampleText
 				})
 			});
@@ -171,8 +251,15 @@
 			
 			formData.append('speaker1_id', selectedSpeaker1Id.toString());
 			formData.append('speaker1_name', speaker1 ? speaker1.speaker_name : '四国めたん');
+			formData.append('speaker1_speed', speaker1Speed.toString());
 			formData.append('speaker2_id', selectedSpeaker2Id.toString());
 			formData.append('speaker2_name', speaker2 ? speaker2.speaker_name : 'ずんだもん');
+			formData.append('speaker2_speed', speaker2Speed.toString());
+			
+			// 会話スタイル情報を追加
+			const selectedStyle = conversationStyles.find(s => s.id === selectedConversationStyle);
+			formData.append('conversation_style', selectedConversationStyle);
+			formData.append('conversation_style_prompt', selectedStyle ? selectedStyle.prompt : '');
 
 			const response = await fetch(getApiUrl('/api/jobs/upload'), {
 				method: 'POST',
@@ -246,9 +333,17 @@
 
 	async function startVideoGeneration(jobId: string) {
 		try {
+			// 編集中の場合は先に編集を終了
+			if (editingDialogue) {
+				editingDialogue = false;
+				await tick(); // UIの更新を待つ
+			}
+			
 			// 対話データがあれば必ず保存（編集された可能性があるため）
 			if (dialogueData) {
 				await updateDialogue(jobId);
+				// 保存完了を待つ
+				await new Promise(resolve => setTimeout(resolve, 500));
 			}
 
 			const response = await fetch(getApiUrl(`/api/jobs/${jobId}/generate-video`), {
@@ -352,6 +447,8 @@
 
 	async function updateDialogue(jobId: string) {
 		try {
+			isUpdatingDialogue = true;
+			
 			const response = await fetch(getApiUrl(`/api/jobs/${jobId}/dialogue`), {
 				method: 'PUT',
 				headers: {
@@ -366,8 +463,12 @@
 			if (!response.ok) {
 				throw new Error('対話データ更新に失敗しました');
 			}
+			
+			console.log('対話データ更新成功');
 		} catch (error) {
 			console.error('対話データ更新エラー:', error);
+		} finally {
+			isUpdatingDialogue = false;
 		}
 	}
 
@@ -375,6 +476,12 @@
 		console.log('ポーリング開始:', { jobId, currentStep });
 		const poll = async () => {
 			try {
+				// 対話データ更新中はポーリングをスキップ
+				if (isUpdatingDialogue) {
+					setTimeout(poll, 3000);
+					return;
+				}
+				
 				const response = await fetch(getApiUrl(`/api/jobs/${jobId}/status`));
 				if (!response.ok) return;
 
@@ -385,14 +492,28 @@
 					progress: job.progress,
 					message: job.message,
 					dialogueData: !!dialogueData,
-					currentStep
+					currentStep,
+					editingDialogue
 				});
 
 				if (job.status === 'dialogue_ready' || job.status === 'slides_ready') {
+					// 対話編集画面で編集中の場合は、データを再読み込みしない
+					if (currentStep === 'dialogue' && editingDialogue) {
+						console.log('編集中のため、データ再読み込みをスキップ');
+						return; // ポーリング停止
+					}
+					
 					if (!dialogueData || isRegenerating) {
 						console.log(`${job.status}検知、対話データ読み込み開始 (再生成: ${isRegenerating})`);
 						// 対話データを読み込む
 						await loadDialogue(jobId, true);  // 強制リロード
+						
+						// 対話データ生成完了後、自動的に全体調整＆カタカナ変換を実行
+						if (dialogueData && currentJob) {
+							console.log('対話データ生成完了、自動的に全体調整＆カタカナ変換を開始');
+							await refineDialogue(currentJob.job_id);
+						}
+						
 						isRegenerating = false;
 						return; // ポーリング停止
 					}
@@ -448,6 +569,14 @@
 	function removeDialogueItem(slideKey: string, index: number) {
 		if (!dialogueData) return;
 		dialogueData[slideKey] = dialogueData[slideKey].filter((_, i) => i !== index);
+	}
+
+	function openImageModal(imageUrl: string) {
+		modalImageUrl = imageUrl;
+	}
+
+	function closeImageModal() {
+		modalImageUrl = null;
 	}
 
 	function toggleSlideHistory(slideKey: string) {
@@ -511,6 +640,58 @@
 		} finally {
 			// ファイル選択をリセット
 			target.value = '';
+		}
+	}
+	
+	async function refineDialogue(jobId: string) {
+		try {
+			// 編集中の場合は先に保存
+			if (editingDialogue && dialogueData) {
+				await updateDialogue(jobId);
+				editingDialogue = false;
+				await tick();
+			}
+			
+			// 調整用の追加指示を入力
+			const adjustmentPrompt = prompt(
+				'全体調整のための追加指示があれば入力してください\n(例: もっとフレンドリーに、専門用語を減らしてなど)',
+				''
+			);
+			
+			isRegenerating = true;
+			
+			const response = await fetch(getApiUrl(`/api/jobs/${jobId}/refine-dialogue`), {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					job_id: jobId,
+					adjustment_prompt: adjustmentPrompt || null
+				})
+			});
+			
+			if (!response.ok) {
+				const error = await response.json();
+				throw new Error(error.detail || '全体調整に失敗しました');
+			}
+			
+			const result = await response.json();
+			
+			// 調整後のデータを更新
+			dialogueData = result.dialogue_data;
+			estimatedDuration = result.estimated_duration;
+			
+			// UIを強制更新
+			await tick();
+			
+			console.log('全体調整とカタカナ変換が完了しました');
+			
+		} catch (error) {
+			console.error('全体調整エラー:', error);
+			alert(error.message || '全体調整に失敗しました');
+		} finally {
+			isRegenerating = false;
 		}
 	}
 </script>
@@ -577,6 +758,27 @@
 						<span>分</span>
 					</div>
 
+					<div class="conversation-style-settings">
+						<h4>会話スタイル</h4>
+						<div class="style-grid">
+							{#each conversationStyles as style}
+								<div class="style-option">
+									<input 
+										type="radio" 
+										id="style-{style.id}" 
+										name="conversationStyle" 
+										value={style.id}
+										bind:group={selectedConversationStyle}
+									/>
+									<label for="style-{style.id}" class="style-label">
+										<span class="style-name">{style.name}</span>
+										<span class="style-description">{style.description}</span>
+									</label>
+								</div>
+							{/each}
+						</div>
+					</div>
+
 					<div class="speaker-settings">
 						<h4>キャラクター設定</h4>
 						<button 
@@ -632,7 +834,7 @@
 									class:loading={playingSampleId === selectedSpeaker1Id}
 									on:click={() => {
 										const speaker = availableSpeakers.find(s => s.style_id === selectedSpeaker1Id);
-										if (speaker) playVoiceSample(selectedSpeaker1Id, speaker.speaker_name);
+										if (speaker) playVoiceSample(selectedSpeaker1Id, speaker.speaker_name, speaker1Speed);
 									}}
 									disabled={playingSampleId !== null}
 									title="サンプルボイスを再生"
@@ -643,6 +845,18 @@
 										🔊
 									{/if}
 								</button>
+							</div>
+							<div class="speed-row">
+								<label for="speaker1-speed">話者1の速度: {speaker1Speed.toFixed(1)}倍</label>
+								<input 
+									type="range" 
+									id="speaker1-speed"
+									bind:value={speaker1Speed}
+									min="0.5"
+									max="2.0"
+									step="0.1"
+									class="speed-slider"
+								/>
 							</div>
 							<div class="speaker-row">
 								<label for="speaker2">話者2（聞き役）:</label>
@@ -662,7 +876,7 @@
 									class:loading={playingSampleId === selectedSpeaker2Id}
 									on:click={() => {
 										const speaker = availableSpeakers.find(s => s.style_id === selectedSpeaker2Id);
-										if (speaker) playVoiceSample(selectedSpeaker2Id, speaker.speaker_name);
+										if (speaker) playVoiceSample(selectedSpeaker2Id, speaker.speaker_name, speaker2Speed);
 									}}
 									disabled={playingSampleId !== null}
 									title="サンプルボイスを再生"
@@ -673,6 +887,18 @@
 										🔊
 									{/if}
 								</button>
+							</div>
+							<div class="speed-row">
+								<label for="speaker2-speed">話者2の速度: {speaker2Speed.toFixed(1)}倍</label>
+								<input 
+									type="range" 
+									id="speaker2-speed"
+									bind:value={speaker2Speed}
+									min="0.5"
+									max="2.0"
+									step="0.1"
+									class="speed-slider"
+								/>
 							</div>
 						{/if}
 					</div>
@@ -703,10 +929,25 @@
 			{/if}
 			
 			<div class="dialogue-controls">
-				<button class="edit-btn" on:click={() => editingDialogue = !editingDialogue}>
+				<button class="edit-btn" on:click={async () => {
+					if (editingDialogue && currentJob) {
+						// 編集を終了する前に保存
+						await updateDialogue(currentJob.job_id);
+					}
+					editingDialogue = !editingDialogue;
+				}}>
 					{editingDialogue ? '編集を終了' : '✏️ スクリプトを編集'}
 				</button>
-				<button class="csv-download-btn" on:click={() => currentJob && downloadCSV(currentJob.job_id)}>
+				<button class="csv-download-btn" on:click={async () => {
+					if (!currentJob) return;
+					// 編集中でなくても、念のためデータを保存
+					if (dialogueData) {
+						await updateDialogue(currentJob.job_id);
+						// 保存完了を待つ
+						await new Promise(resolve => setTimeout(resolve, 500));
+					}
+					await downloadCSV(currentJob.job_id);
+				}}>
 					📥 CSVダウンロード
 				</button>
 				<button class="csv-upload-btn" on:click={() => document.getElementById('csv-upload-input')?.click()}>
@@ -771,7 +1012,15 @@
 							{#if slides.length > 0}
 								{@const slide = slides.find(s => s.slide_number === slideNum)}
 								{#if slide}
-									<img src={getApiUrl(slide.url)} alt="Slide {slideNum}" class="slide-thumbnail" />
+									<img 
+										src={getApiUrl(slide.url)} 
+										alt="Slide {slideNum}" 
+										class="slide-thumbnail clickable"
+										on:click={() => openImageModal(getApiUrl(slide.url))}
+										role="button"
+										tabindex="0"
+										on:keydown={(e) => e.key === 'Enter' && openImageModal(getApiUrl(slide.url))}
+									/>
 								{/if}
 							{/if}
 							<h4>{slideKey.replace('slide_', 'スライド')}</h4>
@@ -908,6 +1157,15 @@
 		</section>
 	{/if}
 </main>
+
+{#if modalImageUrl}
+	<div class="modal-overlay" on:click={closeImageModal} role="button" tabindex="0" on:keydown={(e) => e.key === 'Escape' && closeImageModal()}>
+		<div class="modal-content" on:click|stopPropagation>
+			<button class="modal-close" on:click={closeImageModal}>✕</button>
+			<img src={modalImageUrl} alt="拡大画像" class="modal-image" />
+		</div>
+	</div>
+{/if}
 
 <style>
 	.container {
@@ -1085,6 +1343,22 @@
 
 	.csv-download-btn:hover, .csv-upload-btn:hover {
 		background-color: #047857;
+	}
+	
+	.refine-btn {
+		background-color: #f59e0b;
+		color: white;
+		border: none;
+		padding: 0.75rem 1.5rem;
+		border-radius: 8px;
+		cursor: pointer;
+		font-size: 1rem;
+		margin-right: 1rem;
+		transition: background-color 0.3s ease;
+	}
+	
+	.refine-btn:hover {
+		background-color: #d97706;
 	}
 
 	.edit-notice {
@@ -1283,6 +1557,64 @@
 		background-color: #e5e7eb;
 		border-color: #6b7280;
 	}
+	
+	/* 会話スタイル設定 */
+	.conversation-style-settings {
+		margin: 2rem 0;
+	}
+	
+	.conversation-style-settings h4 {
+		margin-bottom: 1rem;
+		color: #1f2937;
+	}
+	
+	.style-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+		gap: 1rem;
+	}
+	
+	.style-option {
+		position: relative;
+	}
+	
+	.style-option input[type="radio"] {
+		position: absolute;
+		opacity: 0;
+	}
+	
+	.style-label {
+		display: flex;
+		flex-direction: column;
+		padding: 1rem;
+		border: 2px solid #e5e7eb;
+		border-radius: 8px;
+		cursor: pointer;
+		transition: all 0.3s ease;
+		background-color: white;
+	}
+	
+	.style-option input[type="radio"]:checked + .style-label {
+		border-color: #3b82f6;
+		background-color: #eff6ff;
+	}
+	
+	.style-option input[type="radio"]:hover + .style-label {
+		border-color: #93c5fd;
+	}
+	
+	.style-name {
+		font-weight: 600;
+		font-size: 1.1rem;
+		color: #1f2937;
+		margin-bottom: 0.25rem;
+	}
+	
+	.style-description {
+		font-size: 0.875rem;
+		color: #6b7280;
+		line-height: 1.4;
+	}
 
 	/* 進捗セクション */
 	.progress-section {
@@ -1472,6 +1804,61 @@
 		outline: none;
 		border-color: #2563eb;
 		box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+	}
+	
+	.speed-row {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		margin-top: 0.5rem;
+		margin-bottom: 1rem;
+		padding-left: 166px; /* label幅 + gap分のインデント */
+	}
+	
+	.speed-row label {
+		min-width: 150px;
+		font-size: 0.9rem;
+		color: #6b7280;
+	}
+	
+	.speed-slider {
+		flex: 1;
+		height: 6px;
+		background: #e5e7eb;
+		border-radius: 3px;
+		outline: none;
+		-webkit-appearance: none;
+	}
+	
+	.speed-slider::-webkit-slider-thumb {
+		-webkit-appearance: none;
+		appearance: none;
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		background: #2563eb;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+	
+	.speed-slider::-webkit-slider-thumb:hover {
+		transform: scale(1.1);
+		background: #1d4ed8;
+	}
+	
+	.speed-slider::-moz-range-thumb {
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		background: #2563eb;
+		cursor: pointer;
+		transition: all 0.2s ease;
+		border: none;
+	}
+	
+	.speed-slider::-moz-range-thumb:hover {
+		transform: scale(1.1);
+		background: #1d4ed8;
 	}
 	
 	.recommendation-toggle {
@@ -1667,5 +2054,71 @@
 		color: #1f2937;
 		font-size: 0.875rem;
 		line-height: 1.5;
+	}
+
+	/* 画像クリック可能スタイル */
+	.slide-thumbnail.clickable {
+		cursor: pointer;
+		transition: transform 0.2s ease;
+	}
+
+	.slide-thumbnail.clickable:hover {
+		transform: scale(1.05);
+		box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+	}
+
+	/* モーダルスタイル */
+	.modal-overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: rgba(0, 0, 0, 0.8);
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		z-index: 1000;
+		cursor: pointer;
+	}
+
+	.modal-content {
+		position: relative;
+		max-width: 90vw;
+		max-height: 90vh;
+		background-color: white;
+		border-radius: 8px;
+		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+		cursor: default;
+	}
+
+	.modal-image {
+		max-width: 100%;
+		max-height: 90vh;
+		border-radius: 8px;
+		display: block;
+	}
+
+	.modal-close {
+		position: absolute;
+		top: -40px;
+		right: 0;
+		background-color: white;
+		border: none;
+		border-radius: 50%;
+		width: 36px;
+		height: 36px;
+		font-size: 20px;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: all 0.2s ease;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+	}
+
+	.modal-close:hover {
+		background-color: #f3f4f6;
+		transform: scale(1.1);
 	}
 </style>

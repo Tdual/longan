@@ -52,12 +52,17 @@ class AudioGenerator:
         
         # メタデータからスピーカー設定を読み込む
         metadata_path = self.base_dir / "uploads" / self.job_id / "metadata.json"
+        speaker_info = {}
         if metadata_path.exists():
             with open(metadata_path, "r", encoding="utf-8") as f:
                 metadata = json.load(f)
             speakers = {
                 "speaker1": metadata.get("speaker1", {}).get("id", 2),
                 "speaker2": metadata.get("speaker2", {}).get("id", 3)
+            }
+            speaker_info = {
+                "speaker1": metadata.get("speaker1", {}),
+                "speaker2": metadata.get("speaker2", {})
             }
         else:
             # デフォルト設定
@@ -109,7 +114,19 @@ class AudioGenerator:
                 
                 # 音声合成パラメータを調整
                 synthesis_data = query_response.json()
-                synthesis_data["speedScale"] = speed_scale
+                
+                # キャラクターごとの速度調整
+                current_speaker_info = speaker_info.get(speaker, {})
+                # メタデータに速度が設定されている場合はそれを使用
+                if current_speaker_info.get("speed"):
+                    current_speed_scale = speed_scale * current_speaker_info.get("speed", 1.0)
+                else:
+                    # 速度が設定されていない場合、九州そらはデフォルトで1.2倍速
+                    current_speed_scale = speed_scale
+                    if current_speaker_info.get("name") == "九州そら":
+                        current_speed_scale = speed_scale * 1.2
+                
+                synthesis_data["speedScale"] = current_speed_scale
                 synthesis_data["pitchScale"] = pitch_scale
                 synthesis_data["intonationScale"] = intonation_scale
                 synthesis_data["volumeScale"] = volume_scale

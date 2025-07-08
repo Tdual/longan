@@ -48,6 +48,10 @@ class UpdateDialogueRequest(BaseModel):
     job_id: str
     dialogue_data: Dict[str, List[Dict]]  # 編集された対話データ
 
+class RefineDialogueRequest(BaseModel):
+    job_id: str
+    adjustment_prompt: Optional[str] = None  # 全体調整のための追加指示
+
 # FastAPIアプリケーション
 app = FastAPI(title="Gen Movie API", version="1.0.0")
 
@@ -82,8 +86,12 @@ async def upload_pdf(
     target_duration: int = Form(10),  # デフォルト10分
     speaker1_id: int = Form(2),
     speaker1_name: str = Form("四国めたん"),
+    speaker1_speed: float = Form(1.0),
     speaker2_id: int = Form(3),
-    speaker2_name: str = Form("ずんだもん")
+    speaker2_name: str = Form("ずんだもん"),
+    speaker2_speed: float = Form(1.0),
+    conversation_style: str = Form("friendly"),
+    conversation_style_prompt: str = Form("")
 ):
     """PDFファイルをアップロードしてジョブを作成"""
     
@@ -116,8 +124,10 @@ async def upload_pdf(
     # メタデータを保存（目安時間とキャラクター設定）
     metadata = {
         "target_duration": target_duration,
-        "speaker1": {"id": speaker1_id, "name": speaker1_name},
-        "speaker2": {"id": speaker2_id, "name": speaker2_name}
+        "speaker1": {"id": speaker1_id, "name": speaker1_name, "speed": speaker1_speed},
+        "speaker2": {"id": speaker2_id, "name": speaker2_name, "speed": speaker2_speed},
+        "conversation_style": conversation_style,
+        "conversation_style_prompt": conversation_style_prompt
     }
     metadata_file = job_dir / "metadata.json"
     with open(metadata_file, "w", encoding="utf-8") as f:
@@ -625,6 +635,92 @@ async def update_dialogue(
     
     return {"message": "対話スクリプトを更新しました"}
 
+@app.post("/api/jobs/{job_id}/refine-dialogue")
+async def refine_dialogue(
+    job_id: str,
+    request: RefineDialogueRequest
+):
+    """対話スクリプト全体を調整し、英語をカタカナに変換"""
+    
+    if job_id not in jobs_db:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    
+    job = jobs_db[job_id]
+    
+    # 現在の対話データを読み込み
+    data_dir = Path.cwd() / "data" / job_id
+    dialogue_path = data_dir / "dialogue_narration_katakana.json"
+    
+    if not dialogue_path.exists():
+        raise HTTPException(status_code=404, detail="対話データが見つかりません")
+    
+    with open(dialogue_path, 'r', encoding='utf-8') as f:
+        current_dialogue = json.load(f)
+    
+    # メタデータからスピーカー情報を取得
+    metadata_path = UPLOAD_DIR / job_id / "metadata.json"
+    if metadata_path.exists():
+        with open(metadata_path, 'r', encoding='utf-8') as f:
+            metadata = json.load(f)
+            speaker_info = {
+                "speaker1": metadata.get("speaker1", {}),
+                "speaker2": metadata.get("speaker2", {})
+            }
+    else:
+        speaker_info = None
+    
+    # ステータス更新
+    job.status = "refining_dialogue"
+    job.message = "対話スクリプトを全体調整中..."
+    job.updated_at = datetime.now()
+    
+    # 全体調整とカタカナ変換
+    from api.core.dialogue_refiner import DialogueRefiner
+    refiner = DialogueRefiner()
+    
+    try:
+        # 全体調整と英語→カタカナ変換
+        refined_dialogue = refiner.refine_and_convert_to_katakana(
+            current_dialogue,
+            speaker_info=speaker_info,
+            adjustment_prompt=request.adjustment_prompt
+        )
+        
+        # 調整後のデータを保存
+        with open(dialogue_path, 'w', encoding='utf-8') as f:
+            json.dump(refined_dialogue, f, ensure_ascii=False, indent=2)
+        
+        # originalも同じ内容で更新
+        original_path = data_dir / "dialogue_narration_original.json"
+        with open(original_path, 'w', encoding='utf-8') as f:
+            json.dump(refined_dialogue, f, ensure_ascii=False, indent=2)
+        
+        # 推定時間を再計算
+        from api.core.dialogue_generator import DialogueGenerator
+        generator = DialogueGenerator(job_id, Path.cwd())
+        estimated_duration = generator.calculate_duration(refined_dialogue)
+        
+        # ステータス更新
+        job.status = "dialogue_ready"
+        job.message = "対話スクリプトの全体調整が完了しました"
+        job.updated_at = datetime.now()
+        
+        return {
+            "message": "対話スクリプトを調整しました",
+            "dialogue_data": refined_dialogue,
+            "estimated_duration": {
+                "seconds": estimated_duration,
+                "formatted": f"{int(estimated_duration // 60)}分{int(estimated_duration % 60)}秒"
+            }
+        }
+        
+    except Exception as e:
+        job.status = "failed"
+        job.error = str(e)
+        job.message = "対話スクリプトの調整に失敗しました"
+        job.updated_at = datetime.now()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/jobs/{job_id}/generate-video")
 async def generate_video_complete(
     job_id: str,
@@ -694,6 +790,8 @@ async def get_speakers():
 
 class VoiceSampleRequest(BaseModel):
     speaker_id: int
+    speaker_name: Optional[str] = None
+    speed: Optional[float] = None
     text: str
 
 @app.post("/api/voice-sample")
@@ -714,11 +812,21 @@ async def generate_voice_sample(request: VoiceSampleRequest):
         )
         query_response.raise_for_status()
         
+        # 音声合成パラメータを調整
+        synthesis_data = query_response.json()
+        
+        # 速度調整
+        if request.speed:
+            synthesis_data["speedScale"] = request.speed
+        elif request.speaker_name == "九州そら":
+            # 速度が指定されていない場合、九州そらはデフォルトで1.2倍速
+            synthesis_data["speedScale"] = 1.2
+        
         # 音声合成
         synthesis_response = requests.post(
             f"{voicevox_url}/synthesis",
             params={"speaker": request.speaker_id},
-            json=query_response.json()
+            json=synthesis_data
         )
         synthesis_response.raise_for_status()
         
@@ -781,17 +889,20 @@ async def convert_pdf_to_slides(job_id: str, pdf_path: str, target_duration: int
             job.progress = 15 + int(progress * 0.8)  # 15-95%の範囲で進捗表示
             job.updated_at = datetime.now()
         
-        # メタデータがある場合はスピーカー情報を取得
+        # メタデータがある場合はスピーカー情報と会話スタイルを取得
         speaker_info = None
+        conversation_style_prompt = None
         if metadata:
             speaker_info = {
                 'speaker1': metadata.get('speaker1'),
                 'speaker2': metadata.get('speaker2')
             }
+            conversation_style_prompt = metadata.get('conversation_style_prompt', '')
         
-        # 対話データを生成（目安時間とスピーカー情報を渡す）
+        # 対話データを生成（目安時間とスピーカー情報、会話スタイルを渡す）
         dialogue_path = processor.generate_dialogue_from_pdf(
             pdf_path, 
+            additional_prompt=conversation_style_prompt,
             progress_callback=update_progress, 
             target_duration=target_duration,
             speaker_info=speaker_info
@@ -914,9 +1025,17 @@ async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] =
                 json.dump(dialogue_data, f, ensure_ascii=False, indent=2)
         else:
             # 通常の生成
+            # メタデータから会話スタイルプロンプトを取得
+            conversation_style_prompt = metadata.get('conversation_style_prompt', '') if metadata else ''
+            if additional_prompt:
+                # 追加プロンプトがある場合は結合
+                full_prompt = f"{conversation_style_prompt}\n\n{additional_prompt}" if conversation_style_prompt else additional_prompt
+            else:
+                full_prompt = conversation_style_prompt
+            
             dialogue_path = processor.generate_dialogue_from_pdf(
                 pdf_path, 
-                additional_prompt,
+                additional_prompt=full_prompt,
                 progress_callback=update_progress,
                 target_duration=target_duration,
                 speaker_info=speaker_info
