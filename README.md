@@ -263,6 +263,7 @@ pip install "numpy<2"
 ## 謝辞
 
 - VOICEVOX: 高品質な日本語音声合成エンジン
+- 全てのOSSコミッター: このプロジェクトを支えるオープンソースライブラリの開発と維持に感謝
 
 ## 開発メンバー
 
@@ -271,4 +272,5 @@ pip install "numpy<2"
 
 ## 連絡先
 
-tdualdir@gmail.com
+- Email: tdualdir@gmail.com
+- X (Twitter): https://x.com/tdualdir
