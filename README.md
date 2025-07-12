@@ -152,7 +152,7 @@ longan/
 ├── api/                    # FastAPI Backend
 │   ├── core/              # コア機能
 │   │   ├── dialogue_generator.py    # GPT-4による対話生成
-│   │   ├── dialogue_refiner.py      # 三段階カタカナ変換
+│   │   ├── dialogue_refiner.py      # 対話内容の調整
 │   │   ├── audio_generator.py       # VOICEVOX音声生成
 │   │   ├── video_creator.py         # 動画作成
 │   │   └── pdf_processor.py         # PDF処理
@@ -208,16 +208,6 @@ PDFをアップロードしてジョブを作成
 - スライドの重要度を自動判定し、時間配分を最適化
 - スライド間の文脈を保持した一貫性のある対話
 
-### カタカナ変換システム
-三段階処理により、英語用語を確実にカタカナに変換：
-1. **第一段階**: 全体の一貫性調整
-2. **第二段階**: カタカナ変換（後半重点）
-3. **第三段階**: 表記揺れ修正
-
-例：
-- Anthropic → アンソロピック
-- Constitutional AI → コンスティテューショナル エーアイ
-- Machine Learning → マシーンラーニング
 
 ### 音声品質
 - 抑揚を1.2に設定して表現豊かな音声を実現
