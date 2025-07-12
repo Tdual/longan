@@ -15,7 +15,7 @@ VOICEVOX公式のDockerイメージを使用する最も簡単な方法です。
 
 2. アプリケーションコンテナに入る：
    ```bash
-   docker-compose -f docker-compose.simple.yml exec gen_movie bash
+   docker-compose -f docker-compose.simple.yml exec longan bash
    ```
 
 3. コンテナ内で音声生成と動画作成：
@@ -45,7 +45,7 @@ VOICEVOXを含む単一のDockerイメージを作成する方法です。
 
 1. イメージをビルド：
    ```bash
-   docker build -t gen_movie_voicevox .
+   docker build -t longan_voicevox .
    ```
 
 2. Docker Composeで起動：
