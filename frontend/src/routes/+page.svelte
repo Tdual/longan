@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
-	import { getApiUrl } from '$lib/config';
+	// getApiUrl は削除されました - 直接URLパスを使用
 	
 	interface Job {
 		job_id: string;
@@ -138,7 +138,7 @@
 	async function loadSpeakers() {
 		speakersLoading = true;
 		try {
-			const response = await fetch(getApiUrl('/api/speakers'));
+			const response = await fetch('/api/speakers');
 			if (response.ok) {
 				availableSpeakers = await response.json();
 			}
@@ -157,7 +157,7 @@
 	
 	async function checkApiKeyStatus() {
 		try {
-			const response = await fetch(getApiUrl('/api/settings/providers'));
+			const response = await fetch('/api/settings/providers');
 			if (response.ok) {
 				const data = await response.json();
 				// いずれかのプロバイダーが設定されているかチェック
@@ -208,7 +208,7 @@
 				? 'こんにちは！ずんだもんなのだ！' 
 				: `こんにちは！${speakerName}です。よろしくお願いします。`;
 			
-			const response = await fetch(getApiUrl('/api/voice-sample'), {
+			const response = await fetch('/api/voice-sample', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -283,7 +283,7 @@
 			formData.append('conversation_style', selectedConversationStyle);
 			formData.append('conversation_style_prompt', selectedStyle ? selectedStyle.prompt : '');
 
-			const response = await fetch(getApiUrl('/api/jobs/upload'), {
+			const response = await fetch('/api/jobs/upload', {
 				method: 'POST',
 				body: formData
 			});
@@ -324,7 +324,7 @@
 				await tick(); // UIの更新を強制
 			}
 			
-			const response = await fetch(getApiUrl(`/api/jobs/${jobId}/generate-dialogue`), {
+			const response = await fetch(`/api/jobs/${jobId}/generate-dialogue`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -368,7 +368,7 @@
 				await new Promise(resolve => setTimeout(resolve, 500));
 			}
 
-			const response = await fetch(getApiUrl(`/api/jobs/${jobId}/generate-video`), {
+			const response = await fetch(`/api/jobs/${jobId}/generate-video`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -399,7 +399,7 @@
 			const timestamp = forceReload || isRegenerating ? `?t=${Date.now()}` : '';
 			
 			// 対話データを取得
-			const dialogueResponse = await fetch(getApiUrl(`/api/jobs/${jobId}/dialogue${timestamp}`));
+			const dialogueResponse = await fetch(`/api/jobs/${jobId}/dialogue${timestamp}`);
 			if (!dialogueResponse.ok) {
 				console.error('対話データ取得失敗:', dialogueResponse.status);
 				return;
@@ -420,7 +420,7 @@
 			console.log('dialogueData keys:', Object.keys(dialogueData));
 			
 			// スライド画像も取得
-			const slidesResponse = await fetch(getApiUrl(`/api/jobs/${jobId}/slides${timestamp}`));
+			const slidesResponse = await fetch(`/api/jobs/${jobId}/slides${timestamp}`);
 			if (slidesResponse.ok) {
 				slides = await slidesResponse.json();
 				console.log('スライド画像取得成功:', slides.length + '枚');
@@ -444,7 +444,7 @@
 
 	async function loadInstructionHistory(jobId: string) {
 		try {
-			const response = await fetch(getApiUrl(`/api/jobs/${jobId}/instruction-history`));
+			const response = await fetch(`/api/jobs/${jobId}/instruction-history`);
 			if (response.ok) {
 				const data = await response.json();
 				instructionHistory = data.history || {};
@@ -457,7 +457,7 @@
 
 	async function loadJobMetadata(jobId: string) {
 		try {
-			const response = await fetch(getApiUrl(`/api/jobs/${jobId}/metadata`));
+			const response = await fetch(`/api/jobs/${jobId}/metadata`);
 			if (response.ok) {
 				currentJobMetadata = await response.json();
 				console.log('メタデータ取得成功:', currentJobMetadata);
@@ -471,7 +471,7 @@
 		try {
 			isUpdatingDialogue = true;
 			
-			const response = await fetch(getApiUrl(`/api/jobs/${jobId}/dialogue`), {
+			const response = await fetch(`/api/jobs/${jobId}/dialogue`, {
 				method: 'PUT',
 				headers: {
 					'Content-Type': 'application/json'
@@ -511,7 +511,7 @@
 					return;
 				}
 				
-				const response = await fetch(getApiUrl(`/api/jobs/${jobId}/status`));
+				const response = await fetch(`/api/jobs/${jobId}/status`);
 				if (!response.ok) return;
 
 				const job = await response.json();
@@ -615,7 +615,7 @@
 
 	async function downloadCSV(jobId: string) {
 		try {
-			const response = await fetch(getApiUrl(`/api/jobs/${jobId}/dialogue/csv`));
+			const response = await fetch(`/api/jobs/${jobId}/dialogue/csv`);
 			if (!response.ok) {
 				throw new Error('CSVダウンロードに失敗しました');
 			}
@@ -644,7 +644,7 @@
 		formData.append('file', file);
 		
 		try {
-			const response = await fetch(getApiUrl(`/api/jobs/${currentJob.job_id}/dialogue/csv`), {
+			const response = await fetch(`/api/jobs/${currentJob.job_id}/dialogue/csv`, {
 				method: 'POST',
 				body: formData
 			});
@@ -685,7 +685,7 @@
 	<header>
 		<div class="header-content">
 			<div>
-				<h1>🎬 longan</h1>
+				<h1><img src="/favicon.png" alt="longan" class="logo-icon"> longan</h1>
 				<p>PDFスライドからVOICEVOXキャラクターによる対話動画を自動生成</p>
 			</div>
 			<a href="/settings" class="settings-link">
@@ -1004,13 +1004,13 @@
 								{@const slide = slides.find(s => s.slide_number === slideNum)}
 								{#if slide}
 									<img 
-										src={getApiUrl(slide.url)} 
+										src={slide.url} 
 										alt="Slide {slideNum}" 
 										class="slide-thumbnail clickable"
-										on:click={() => openImageModal(getApiUrl(slide.url))}
+										on:click={() => openImageModal(slide.url)}
 										role="button"
 										tabindex="0"
-										on:keydown={(e) => e.key === 'Enter' && openImageModal(getApiUrl(slide.url))}
+										on:keydown={(e) => e.key === 'Enter' && openImageModal(slide.url)}
 									/>
 								{/if}
 							{/if}
@@ -1115,14 +1115,14 @@
 						<h4>✅ 動画生成完了！</h4>
 						<div class="download-section">
 							<a 
-								href={getApiUrl(currentJob.result_url)} 
+								href={currentJob.result_url} 
 								download 
 								class="download-btn"
 							>
 								📥 動画をダウンロード
 							</a>
 							<video controls class="preview-video">
-								<source src={getApiUrl(currentJob.result_url)} type="video/mp4">
+								<source src={currentJob.result_url} type="video/mp4">
 								お使いのブラウザは動画再生に対応していません。
 							</video>
 						</div>
@@ -1218,6 +1218,16 @@
 		font-size: 2.5rem;
 		color: #2563eb;
 		margin-bottom: 0.5rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+	}
+
+	.logo-icon {
+		width: 2.5rem;
+		height: 2.5rem;
+		object-fit: contain;
 	}
 
 	header p {

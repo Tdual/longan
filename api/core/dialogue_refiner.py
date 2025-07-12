@@ -39,7 +39,7 @@ class DialogueRefiner:
         )
         self.llm = LLMFactory.create(config)
     
-    def refine_and_convert_to_katakana(
+    async def refine_and_convert_to_katakana(
         self, 
         dialogue_data: Dict[str, List[Dict]], 
         speaker_info: Optional[Dict] = None,
@@ -48,17 +48,17 @@ class DialogueRefiner:
         """三段階処理で対話スクリプトを完全に調整"""
         
         print("第一段階：全体の一貫性調整を開始...")
-        stage1_result = self._stage1_consistency_adjustment(dialogue_data, speaker_info, adjustment_prompt)
+        stage1_result = await self._stage1_consistency_adjustment(dialogue_data, speaker_info, adjustment_prompt)
         
         print("第二段階：カタカナ変換（後半重点）を開始...")
-        stage2_result = self._stage2_katakana_conversion(stage1_result, speaker_info)
+        stage2_result = await self._stage2_katakana_conversion(stage1_result, speaker_info)
         
         print("第三段階：表記揺れ修正を開始...")
-        stage3_result = self._stage3_notation_consistency(stage2_result, speaker_info)
+        stage3_result = await self._stage3_notation_consistency(stage2_result, speaker_info)
         
         return stage3_result
     
-    def _stage1_consistency_adjustment(
+    async def _stage1_consistency_adjustment(
         self, 
         dialogue_data: Dict[str, List[Dict]], 
         speaker_info: Optional[Dict] = None,
@@ -107,19 +107,19 @@ class DialogueRefiner:
         user_prompt += f"\n\n対話スクリプト:\n{dialogue_text}"
         
         # LLMで調整
-        refined_text = asyncio.run(self.llm.generate(
+        refined_text = await self.llm.generate(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             temperature=0.3,
             max_tokens=4000
-        ))
+        )
         
         # 調整されたテキストを元の形式に戻す
         refined_dialogue = self._parse_refined_dialogue(refined_text, dialogue_data)
         
         return refined_dialogue
     
-    def _stage2_katakana_conversion(
+    async def _stage2_katakana_conversion(
         self, 
         dialogue_data: Dict[str, List[Dict]], 
         speaker_info: Optional[Dict] = None
@@ -201,19 +201,19 @@ class DialogueRefiner:
         user_prompt = f"以下の対話スクリプト内のすべての英語・ローマ字をカタカナに変換してください。後半のスライドまで漏れなく確認してください。\n\n対話スクリプト:\n{dialogue_text}"
         
         # LLMでカタカナ変換
-        refined_text = asyncio.run(self.llm.generate(
+        refined_text = await self.llm.generate(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             temperature=0.1,  # より確実な変換のため低温度
             max_tokens=4000
-        ))
+        )
         
         # 調整されたテキストを元の形式に戻す
         refined_dialogue = self._parse_refined_dialogue(refined_text, dialogue_data)
         
         return refined_dialogue
     
-    def _stage3_notation_consistency(
+    async def _stage3_notation_consistency(
         self, 
         dialogue_data: Dict[str, List[Dict]], 
         speaker_info: Optional[Dict] = None
@@ -261,12 +261,12 @@ class DialogueRefiner:
         user_prompt = f"以下の対話スクリプトの表記揺れを修正し、全体で一貫した表記に統一してください。\n\n対話スクリプト:\n{dialogue_text}"
         
         # LLMで表記統一
-        refined_text = asyncio.run(self.llm.generate(
+        refined_text = await self.llm.generate(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             temperature=0.1,  # より確実な統一のため低温度
             max_tokens=4000
-        ))
+        )
         
         # 調整されたテキストを元の形式に戻す
         refined_dialogue = self._parse_refined_dialogue(refined_text, dialogue_data)

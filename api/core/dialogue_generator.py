@@ -44,7 +44,7 @@ class DialogueGenerator:
         self.default_temperature = settings.get("temperature", 0.7)
         self.default_max_tokens = settings.get("max_tokens", 4000)
     
-    def analyze_regeneration_request(self, user_instruction: str, total_slides: int) -> List[int]:
+    async def analyze_regeneration_request(self, user_instruction: str, total_slides: int) -> List[int]:
         """ユーザーの指示から再生成するスライド番号を判断"""
         
         system_prompt = """あなたはユーザーの指示を分析して、どのスライドを再生成すべきか判断するアシスタントです。
@@ -71,20 +71,20 @@ class DialogueGenerator:
         
         try:
             # 新しいLLMインターフェースを使用（同期的に実行）
-            response_text = asyncio.run(self.llm.generate(
+            response_text = await self.llm.generate(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 temperature=0.3,  # 判断タスクなので低めの温度
                 max_tokens=500,   # 短い応答で十分
                 response_format={"type": "json_object"}
-            ))
+            )
             
             if not response_text:
                 # デフォルトは全スライド
                 return list(range(1, total_slides + 1))
             
             try:
-                result = json.loads(content)
+                result = json.loads(response_text)
                 slide_numbers = result.get("slide_numbers", [])
                 # 有効なスライド番号のみを返す
                 valid_numbers = [n for n in slide_numbers if 1 <= n <= total_slides]
@@ -104,7 +104,7 @@ class DialogueGenerator:
             # エラー時は全スライド
             return list(range(1, total_slides + 1))
         
-    def analyze_user_importance_adjustments(self, user_instruction: str, slide_count: int) -> Dict[int, float]:
+    async def analyze_user_importance_adjustments(self, user_instruction: str, slide_count: int) -> Dict[int, float]:
         """ユーザーの指示から重要度の調整を分析"""
         
         system_prompt = """あなたはユーザーの指示を分析して、スライドの重要度調整を判断するアシスタントです。
@@ -129,13 +129,13 @@ JSON形式で調整係数を返してください。調整が必要ないスラ�
         
         try:
             # 新しいLLMインターフェースを使用
-            response_text = asyncio.run(self.llm.generate(
+            response_text = await self.llm.generate(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 temperature=0.3,
                 max_tokens=500,
                 response_format={"type": "json_object"}
-            ))
+            )
             
             if response_text:
                 adjustments = json.loads(response_text)
@@ -148,7 +148,7 @@ JSON形式で調整係数を返してください。調整が必要ないスラ�
             print(f"重要度調整分析エラー: {e}")
             return {}
     
-    def analyze_slide_importance(self, slide_texts: List[str], user_instruction: str = None) -> Dict[int, float]:
+    async def analyze_slide_importance(self, slide_texts: List[str], user_instruction: str = None) -> Dict[int, float]:
         """各スライドの重要度を分析して時間配分の重みを返す"""
         
         system_prompt = """あなたはプレゼンテーション分析の専門家です。
@@ -179,13 +179,13 @@ JSON形式で各スライドの重要度係数を返してください。
         
         try:
             # 新しいLLMインターフェースを使用
-            response_text = asyncio.run(self.llm.generate(
+            response_text = await self.llm.generate(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 temperature=0.3,
                 max_tokens=1000,
                 response_format={"type": "json_object"}
-            ))
+            )
             
             if response_text:
                 importance_map = json.loads(response_text)
@@ -202,7 +202,7 @@ JSON形式で各スライドの重要度係数を返してください。
         
         # ユーザー指示による調整を適用
         if user_instruction:
-            adjustments = self.analyze_user_importance_adjustments(user_instruction, len(slide_texts))
+            adjustments = await self.analyze_user_importance_adjustments(user_instruction, len(slide_texts))
             print(f"ユーザー指示による重要度調整: {adjustments}")
             
             for slide_num, adjustment in adjustments.items():
@@ -212,13 +212,13 @@ JSON形式で各スライドの重要度係数を返してください。
         
         return base_importance
     
-    def extract_text_from_slides(self, slide_texts: List[str], additional_prompt: str = None, progress_callback=None, target_duration: int = 10, speaker_info: dict = None) -> Dict[str, List[Dict]]:
+    async def extract_text_from_slides(self, slide_texts: List[str], additional_prompt: str = None, progress_callback=None, target_duration: int = 10, speaker_info: dict = None) -> Dict[str, List[Dict]]:
         """スライドのテキストから対話形式のナレーションを生成（スライドごとに個別生成）"""
         
         dialogue_data = {}
         
         # まず各スライドの重要度を分析（ユーザー指示も考慮）
-        importance_map = self.analyze_slide_importance(slide_texts, additional_prompt)
+        importance_map = await self.analyze_slide_importance(slide_texts, additional_prompt)
         
         # 重要度の合計を計算
         total_importance = sum(importance_map.get(i+1, 1.0) for i in range(len(slide_texts)))
@@ -270,7 +270,7 @@ JSON形式で各スライドの重要度係数を返してください。
             else:
                 combined_additional_prompt = importance_note
             
-            slide_dialogue = self.generate_dialogue_for_single_slide(
+            slide_dialogue = await self.generate_dialogue_for_single_slide(
                 slide_number=i+1,
                 slide_text=slide_text,
                 total_slides=len(slide_texts),
@@ -283,14 +283,14 @@ JSON形式で各スライドの重要度係数を返してください。
         
         return dialogue_data
     
-    def regenerate_specific_slides(self, slide_texts: List[str], existing_dialogues: Dict[str, List[Dict]], slide_numbers: List[int], additional_prompt: str = None, progress_callback=None, instruction_history=None, target_duration: int = 10, speaker_info: dict = None) -> Dict[str, List[Dict]]:
+    async def regenerate_specific_slides(self, slide_texts: List[str], existing_dialogues: Dict[str, List[Dict]], slide_numbers: List[int], additional_prompt: str = None, progress_callback=None, instruction_history=None, target_duration: int = 10, speaker_info: dict = None) -> Dict[str, List[Dict]]:
         """特定のスライドのみ再生成"""
         
         # 既存の対話データをコピー
         dialogue_data = existing_dialogues.copy()
         
         # 各スライドの重要度を分析（ユーザー指示も考慮）
-        importance_map = self.analyze_slide_importance(slide_texts, additional_prompt)
+        importance_map = await self.analyze_slide_importance(slide_texts, additional_prompt)
         
         # 重要度の合計を計算
         total_importance = sum(importance_map.get(i+1, 1.0) for i in range(len(slide_texts)))
@@ -350,7 +350,7 @@ JSON形式で各スライドの重要度係数を返してください。
             # このスライドの割り当て時間を取得
             allocated_seconds = slide_time_allocation.get(slide_num, target_seconds / len(slide_texts))
             
-            slide_dialogue = self.generate_dialogue_for_single_slide(
+            slide_dialogue = await self.generate_dialogue_for_single_slide(
                 slide_number=slide_num,
                 slide_text=slide_texts[i],
                 total_slides=len(slide_texts),
@@ -363,7 +363,7 @@ JSON形式で各スライドの重要度係数を返してください。
         
         return dialogue_data
     
-    def generate_dialogue_for_single_slide(self, slide_number: int, slide_text: str, total_slides: int, previous_dialogues: Dict = None, additional_prompt: str = None, target_seconds_per_slide: float = 30, max_retries: int = 3, speaker_info: dict = None) -> List[Dict]:
+    async def generate_dialogue_for_single_slide(self, slide_number: int, slide_text: str, total_slides: int, previous_dialogues: Dict = None, additional_prompt: str = None, target_seconds_per_slide: float = 30, max_retries: int = 3, speaker_info: dict = None) -> List[Dict]:
         """単一スライドの対話を生成"""
         
         # スライドの種類を早めに判定（表紙・表題スライドかどうか）
@@ -660,13 +660,13 @@ speakerは必ず"speaker1"か"speaker2"を使用してください。
         for attempt in range(max_retries):
             try:
                 # 新しいLLMインターフェースを使用
-                response_text = asyncio.run(self.llm.generate(
+                response_text = await self.llm.generate(
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     temperature=0.8,
                     max_tokens=3000,  # 単一スライドなので少なめでOK
                     response_format={"type": "json_object"}
-                ))
+                )
                 
                 # レスポンスをパース
                 if not response_text:
@@ -725,7 +725,7 @@ speakerは必ず"speaker1"か"speaker2"を使用してください。
                     raise Exception(f"スライド{slide_number}の対話生成に失敗しました：{str(e)}")
     
     
-    def extract_text_from_slides_batch(self, slide_texts: List[str], additional_prompt: str = None) -> Dict[str, List[Dict]]:
+    async def extract_text_from_slides_batch(self, slide_texts: List[str], additional_prompt: str = None) -> Dict[str, List[Dict]]:
         """スライドのテキストから対話形式のナレーションを生成"""
         
         system_prompt = """あなたは魅力的な教育動画を作成するプロの脚本家です。四国めたんとずんだもんによる楽しい対話を書いてください。
@@ -800,13 +800,13 @@ speakerは必ず"speaker1"か"speaker2"を使用してください。
 
         try:
             # 新しいLLMインターフェースを使用
-            response_text = asyncio.run(self.llm.generate(
+            response_text = await self.llm.generate(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 temperature=0.8,  # より創造的な会話のために少し上げる
                 max_tokens=8000,  # より長い会話を許可
                 response_format={"type": "json_object"}  # JSON形式を強制
-            ))
+            )
             
             # レスポンスをパース
             if not response_text:

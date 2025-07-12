@@ -991,7 +991,7 @@ async def convert_pdf_to_slides(job_id: str, pdf_path: str, target_duration: int
             conversation_style_prompt = metadata.get('conversation_style_prompt', '')
         
         # 対話データを生成（目安時間とスピーカー情報、会話スタイルを渡す）
-        dialogue_path = processor.generate_dialogue_from_pdf(
+        dialogue_path = await processor.generate_dialogue_from_pdf(
             pdf_path, 
             additional_prompt=conversation_style_prompt,
             progress_callback=update_progress, 
@@ -1073,7 +1073,7 @@ async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] =
             slide_texts = text_extractor.extract_text_from_pdf(pdf_path)
             
             # AIに判断させる
-            target_slides = dialogue_generator.analyze_regeneration_request(
+            target_slides = await dialogue_generator.analyze_regeneration_request(
                 additional_prompt, 
                 len(slide_texts)
             )
@@ -1091,7 +1091,7 @@ async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] =
                 existing_dialogues = {}
             
             # 特定のスライドのみ再生成
-            dialogue_data = dialogue_generator.regenerate_specific_slides(
+            dialogue_data = await dialogue_generator.regenerate_specific_slides(
                 slide_texts,
                 existing_dialogues,
                 target_slides,

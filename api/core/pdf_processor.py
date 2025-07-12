@@ -26,7 +26,7 @@ class PDFProcessor:
         slide_paths = converter.convert_pdf_to_images(pdf_path)
         return len(slide_paths)
     
-    def generate_dialogue_from_pdf(self, pdf_path: str, additional_prompt: str = None, progress_callback=None, target_duration: int = 10, speaker_info: dict = None) -> str:
+    async def generate_dialogue_from_pdf(self, pdf_path: str, additional_prompt: str = None, progress_callback=None, target_duration: int = 10, speaker_info: dict = None) -> str:
         """PDFから対話データを生成"""
         # 1. PDFからテキストを抽出
         text_extractor = TextExtractor()
@@ -34,7 +34,7 @@ class PDFProcessor:
         
         # 2. 対話を生成（目安時間とスピーカー情報を渡す）
         dialogue_generator = DialogueGenerator()
-        dialogue_data = dialogue_generator.extract_text_from_slides(
+        dialogue_data = await dialogue_generator.extract_text_from_slides(
             slide_texts, 
             additional_prompt,
             progress_callback,
@@ -47,7 +47,7 @@ class PDFProcessor:
             progress_callback("全体調整とカタカナ変換を実行中...", 95)
         
         dialogue_refiner = DialogueRefiner()
-        refined_dialogue_data = dialogue_refiner.refine_and_convert_to_katakana(
+        refined_dialogue_data = await dialogue_refiner.refine_and_convert_to_katakana(
             dialogue_data,
             speaker_info
         )
