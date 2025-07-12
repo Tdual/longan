@@ -27,7 +27,11 @@ PDFスライドを日本語音声付きの動画に変換するツールです�
 - 📽️ スライドと音声が同期した動画ファイル（MP4）
 - ⏱️ 指定した目標時間に自動調整
 
-*※ 動画サンプルは準備中です*
+### 🎬 デモ動画
+
+[![Longan デモ動画](https://img.youtube.com/vi/hmOCkK2v5nM/maxresdefault.jpg)](https://youtu.be/hmOCkK2v5nM)
+
+*クリックしてYouTubeでデモ動画を視聴*
 
 ## ⚙️ キャラクター・会話形式の設定
 
