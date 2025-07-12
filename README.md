@@ -65,18 +65,6 @@ PDFスライドを日本語音声付きの動画に変換するツールです�
 - ✏️ Webアプリで対話内容を編集・再生成可能
 - ⚙️ Web UIでのLLMプロバイダー設定とAPIキー管理
 
-## 必要な環境
-
-- Python 3.8+
-- VOICEVOX（音声合成エンジン）
-- OpenAI APIキー（対話生成用）
-- Node.js 18+（Webアプリ用）
-
-### 推奨：Docker環境での実行
-
-Dockerを使用すれば、VOICEVOXやNode.jsの環境構築が不要になります。
-詳細は[README_DOCKER.md](README_DOCKER.md)を参照してください。
-
 ## インストール
 
 ### 1. リポジトリのクローン
@@ -158,6 +146,18 @@ VOICEVOXを別途ダウンロードして起動してください。
    ```bash
    python scripts/create_video.py
    ```
+
+## 必要な環境
+
+- Python 3.8+
+- VOICEVOX（音声合成エンジン）
+- OpenAI APIキー（対話生成用）
+- Node.js 18+（Webアプリ用）
+
+### 推奨：Docker環境での実行
+
+Dockerを使用すれば、VOICEVOXやNode.jsの環境構築が不要になります。
+詳細は[README_DOCKER.md](README_DOCKER.md)を参照してください。
 
 ## プロジェクト構成
 
