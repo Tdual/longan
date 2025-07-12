@@ -442,12 +442,36 @@ JSON形式で各スライドの重要度係数を返してください。
     - Claude Code → クロードコード
     - AI → エーアイ
     - ChatGPT → チャットジーピーティー
+    - Anthropic → アンソロピック
+    - Constitutional AI → コンスティテューショナル エーアイ
+    - OpenAI → オープンエーアイ
+    - GPT → ジーピーティー
+    - LLM → エルエルエム
+    - Machine Learning → マシーンラーニング
+    - Deep Learning → ディープラーニング
     - Google → グーグル
+    - Microsoft → マイクロソフト
     - API → エーピーアイ
     - GitHub → ギットハブ
     - Python → パイソン
+    - JavaScript → ジャバスクリプト
+    - TypeScript → タイプスクリプト
+    - React → リアクト
+    - Node.js → ノードジェイエス
+    - Docker → ドッカー
+    - Kubernetes → クーベルネティス
+    - AWS → エーダブリューエス
+    - Azure → アジュール
+    - Firebase → ファイアベース
     - md/MD → エムディー
     - yaml/YAML/yml/YML → ヤムル
+    - JSON → ジェイソン
+    - HTML → エイチティーエムエル
+    - CSS → シーエスエス
+    - SQL → エスキューエル
+    - NoSQL → ノーエスキューエル
+    - REST → レスト
+    - GraphQL → グラフキューエル
 16. 固有名詞や製品名も日本語の音声として自然に聞こえるようカタカナ表記にしてください
 
 出力形式：
@@ -487,8 +511,15 @@ speakerは必ず"speaker1"か"speaker2"を使用してください。
 """.format(slide_number)
         user_prompt += slide_text
         
-        # スライドの種類を判定（表紙・表題スライドかどうか）
+        # スライドの種類を判定（表紙・表題スライド・アジェンダかどうか）
         is_title_slide = False
+        is_agenda_slide = False
+        
+        # アジェンダ/目次スライドの検出
+        agenda_keywords = ['アジェンダ', '目次', 'Agenda', 'Contents', '内容', '今日の内容', '本日の内容']
+        if any(keyword in slide_text for keyword in agenda_keywords):
+            is_agenda_slide = True
+        
         if slide_number == 1:  # 最初のスライド
             is_title_slide = True
         elif slide_number == total_slides:  # 最後のスライド（まとめや終了スライドの可能性）
@@ -520,6 +551,12 @@ speakerは必ず"speaker1"か"speaker2"を使用してください。
             max_utterances = min(6, estimated_utterances)
             dialogue_count_instruction = f"{min_utterances}〜{max_utterances}個の発話で簡潔に"
             min_dialogues_for_this_slide = min_utterances
+        elif is_agenda_slide:
+            # アジェンダスライドは特に短く（3〜4回の対話）
+            min_utterances = 3
+            max_utterances = 4
+            dialogue_count_instruction = "3〜4個の発話で簡潔に（speaker1が項目を読み上げ、speaker2が最後に期待感を示すだけ）"
+            min_dialogues_for_this_slide = min_utterances
         else:
             # 通常スライドは計算値を尊重（最低値の強制をしない）
             min_utterances = max(2, int(estimated_utterances * 0.8))
@@ -540,6 +577,29 @@ speakerは必ず"speaker1"か"speaker2"を使用してください。
                 dialogue_count_instruction = "4〜6回の会話のやり取りを作成"
                 min_dialogues_for_this_slide = 4
         
+        # アジェンダスライドの場合の特別な指示
+        if is_agenda_slide:
+            agenda_instruction = '''【アジェンダスライド専用の指示】
+このスライドはアジェンダ（目次）スライドです。以下のルールを厳守してください：
+
+1. speaker1（{}）の役割：
+   - アジェンダの項目を一つ一つ、省略せずに読み上げる
+   - 「今日は〜について、まず〇〇、次に△△、そして□□について見ていきます」のような形式で
+   - 各項目を読む際、深い内容には踏み込まない（項目名の紹介に留める）
+   - 全ての項目を漏れなく紹介する
+
+2. speaker2（{}）の役割：
+   - speaker1が全ての項目を読み上げるまで待つ
+   - 最後に「楽しみだね！」「面白そうだ！」などの短い期待感を表現するだけ
+   - 質問や深い感想は言わない
+
+3. 対話の流れ：
+   - speaker1がアジェンダを網羅的に紹介
+   - speaker2が最後に短く期待感を示す
+   - 3〜4回程度の短い対話で終了'''.format(speaker1_name, speaker2_name)
+        else:
+            agenda_instruction = ""
+
         user_prompt += """
 
 重要な要望：
@@ -563,7 +623,7 @@ speakerは必ず"speaker1"か"speaker2"を使用してください。
 
 必ず有効なJSON形式（{{"dialogue": [...]}}の形式）で出力してください。""".format(
             dialogue_count_instruction,
-            '''特別な注意：
+            agenda_instruction if is_agenda_slide else ('''特別な注意：
 これは表紙・タイトルページなので、簡潔に導入してください：
 - 挨拶と今日のテーマの紹介に焦点を当てる
 - 詳細は後で説明することを示唆する（「後のスライド」とは言わない）
@@ -571,7 +631,7 @@ speakerは必ず"speaker1"か"speaker2"を使用してください。
 これは{}番目のトピックです：
 - 「こんにちは」「今日は」「今回は」などの挨拶は絶対に使わないでください
 - 前のトピックから自然に話を続けてください
-- いきなり本題から入って構いません'''.format(slide_number)
+- いきなり本題から入って構いません'''.format(slide_number))
         )
         
         # 追加プロンプトがある場合は付加
