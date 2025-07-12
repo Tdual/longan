@@ -134,8 +134,8 @@ VOICEVOXを別途ダウンロードして起動してください。
 
 ### Webアプリでの使い方（推奨）
 
-1. ブラウザで http://localhost:3000 にアクセス
-2. 初回起動時は設定画面（http://localhost:3000/settings）でLLMプロバイダーのAPIキーを設定
+1. ブラウザで `http://localhost:3000` にアクセス
+2. 初回起動時は設定画面（`http://localhost:3000/settings`）でLLMプロバイダーのAPIキーを設定
 3. PDFファイルをアップロード
 4. 以下の設定を行う：
    - 目安時間（分）
@@ -267,7 +267,7 @@ pip install "numpy<2"
 
 ## 開発メンバー
 
-- プロダクトマネージャー：tdual
+- プロダクトマネージャー：tdual(ティーデュアル)
 - 開発者：Claude Code
 
 ## 連絡先
