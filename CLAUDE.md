@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Gen Movie is a PDF-to-video converter that transforms PDF slides into narrated Japanese videos using VOICEVOX text-to-speech with dialogue between 四国めたん (Shikoku Metan) and ずんだもん (Zundamon) characters.
+longan (formerly Gen Movie) is a PDF-to-video converter that transforms PDF slides into narrated Japanese videos using VOICEVOX text-to-speech with dialogue between 四国めたん (Shikoku Metan) and ずんだもん (Zundamon) characters.
 
 ## Key Commands
 
@@ -37,6 +37,9 @@ docker-compose up
 
 # Rebuild containers
 docker-compose build
+
+# Rebuild without cache (important when making significant changes)
+docker-compose build --no-cache
 ```
 
 ### Testing and Video Generation
@@ -97,3 +100,75 @@ python scripts/test_voicevox.py
 - Slide-specific dialogue regeneration with context awareness
 - Instruction history tracking to prevent repetitive regenerations
 - English word to Katakana conversion for proper Japanese pronunciation
+- Multiple LLM provider support (OpenAI, Claude, Gemini, AWS Bedrock)
+- Web-based LLM provider configuration and API key management
+- Conversation style selection (ラジオ風、ビジネスライク、友達風、etc.)
+- Auto-copy .env.example on first launch
+
+## LLM Provider Configuration
+
+### Supported Providers
+- **OpenAI** - GPT-4o, GPT-4, GPT-3.5-turbo
+- **Claude (Anthropic)** - Claude-3-opus, Claude-3-sonnet, Claude-3-haiku
+- **Google Gemini** - Gemini Pro, Gemini Pro Vision
+- **AWS Bedrock** - Claude models, Llama3, and more
+
+### Environment Variables (`.env`)
+```bash
+# 使用するLLMプロバイダー: openai, claude, gemini, bedrock
+USE_MODEL=openai
+
+# OpenAI
+OPENAI_API_KEY=your-api-key
+OPENAI_MODEL=gpt-4o
+
+# Claude (Anthropic)
+ANTHROPIC_API_KEY=your-api-key
+CLAUDE_MODEL=claude-3-opus-20240229
+
+# Google Gemini
+GOOGLE_API_KEY=your-api-key
+GEMINI_MODEL=gemini-pro
+
+# AWS Bedrock
+AWS_BEDROCK_CREDENTIALS=ACCESS_KEY|SECRET_KEY  # 統合形式
+# または個別設定
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+AWS_DEFAULT_REGION=ap-northeast-1  # 東京リージョン
+BEDROCK_MODEL=anthropic.claude-3-opus-20240229-v1:0
+```
+
+### Settings Management
+- Web UI at `/settings` for provider configuration
+- Settings stored in project `.env` file
+- Radio button selection for active provider
+- Automatic API key validation
+- Shows warning popup when no API keys configured
+
+### LLM Provider API
+```python
+from api.core.llm_provider import LLMFactory, LLMConfig, LLMProvider
+
+# Create LLM instance
+config = LLMConfig(
+    provider=LLMProvider.OPENAI,
+    api_key="your-key",
+    model_id="gpt-4o"
+)
+llm = LLMFactory.create(config)
+
+# Generate text
+response = await llm.generate(
+    system_prompt="You are a helpful assistant",
+    user_prompt="Hello!",
+    temperature=0.7
+)
+```
+
+### API Endpoints
+- `GET /api/settings/providers` - List available providers
+- `POST /api/settings/provider` - Save provider configuration
+- `DELETE /api/settings/provider/{provider}` - Remove provider
+- `POST /api/settings/test-key` - Test API key validity
+- `PUT /api/settings` - Update general settings

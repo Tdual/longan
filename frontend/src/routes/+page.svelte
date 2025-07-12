@@ -58,6 +58,8 @@
 	let modalImageUrl: string | null = null; // モーダル表示用の画像URL
 	let isUpdatingDialogue = false; // 対話データ更新中フラグ
 	let selectedConversationStyle = 'friendly'; // 選択された会話スタイル
+	let showApiKeyWarning = false; // APIキー未設定警告の表示
+	let hasAnyApiKey = false; // いずれかのAPIキーが設定されているか
 	
 	// 会話スタイルの定義
 	const conversationStyles = [
@@ -147,9 +149,29 @@
 		}
 	}
 
-	onMount(() => {
+	onMount(async () => {
 		loadSpeakers();
+		// APIキーの設定状態をチェック
+		await checkApiKeyStatus();
 	});
+	
+	async function checkApiKeyStatus() {
+		try {
+			const response = await fetch(getApiUrl('/api/settings/providers'));
+			if (response.ok) {
+				const data = await response.json();
+				// いずれかのプロバイダーが設定されているかチェック
+				hasAnyApiKey = data.providers.some((p: any) => p.configured);
+				
+				// APIキーが1つも設定されていない場合は警告を表示
+				if (!hasAnyApiKey) {
+					showApiKeyWarning = true;
+				}
+			}
+		} catch (error) {
+			console.error('APIキー状態の確認に失敗:', error);
+		}
+	}
 	
 	// スピーカーが変更されたときに速度を自動調整
 	$: if (availableSpeakers.length > 0 && selectedSpeaker1Id) {
@@ -464,6 +486,13 @@
 				throw new Error('対話データ更新に失敗しました');
 			}
 			
+			const result = await response.json();
+			
+			// 推定時間を更新
+			if (result.estimated_duration) {
+				estimatedDuration = result.estimated_duration;
+			}
+			
 			console.log('対話データ更新成功');
 		} catch (error) {
 			console.error('対話データ更新エラー:', error);
@@ -508,11 +537,8 @@
 						// 対話データを読み込む
 						await loadDialogue(jobId, true);  // 強制リロード
 						
-						// 対話データ生成完了後、自動的に全体調整＆カタカナ変換を実行
-						if (dialogueData && currentJob) {
-							console.log('対話データ生成完了、自動的に全体調整＆カタカナ変換を開始');
-							await refineDialogue(currentJob.job_id);
-						}
+						// 対話データ生成完了（全体調整とカタカナ変換も含む）
+						console.log('対話データ生成完了（全体調整とカタカナ変換済み）');
 						
 						isRegenerating = false;
 						return; // ポーリング停止
@@ -629,6 +655,12 @@
 			}
 			
 			const result = await response.json();
+			
+			// 推定時間を更新
+			if (result.estimated_duration) {
+				estimatedDuration = result.estimated_duration;
+			}
+			
 			alert(`${result.message}`);
 			
 			// 対話データを再読み込み
@@ -643,67 +675,23 @@
 		}
 	}
 	
-	async function refineDialogue(jobId: string) {
-		try {
-			// 編集中の場合は先に保存
-			if (editingDialogue && dialogueData) {
-				await updateDialogue(jobId);
-				editingDialogue = false;
-				await tick();
-			}
-			
-			// 調整用の追加指示を入力
-			const adjustmentPrompt = prompt(
-				'全体調整のための追加指示があれば入力してください\n(例: もっとフレンドリーに、専門用語を減らしてなど)',
-				''
-			);
-			
-			isRegenerating = true;
-			
-			const response = await fetch(getApiUrl(`/api/jobs/${jobId}/refine-dialogue`), {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({
-					job_id: jobId,
-					adjustment_prompt: adjustmentPrompt || null
-				})
-			});
-			
-			if (!response.ok) {
-				const error = await response.json();
-				throw new Error(error.detail || '全体調整に失敗しました');
-			}
-			
-			const result = await response.json();
-			
-			// 調整後のデータを更新
-			dialogueData = result.dialogue_data;
-			estimatedDuration = result.estimated_duration;
-			
-			// UIを強制更新
-			await tick();
-			
-			console.log('全体調整とカタカナ変換が完了しました');
-			
-		} catch (error) {
-			console.error('全体調整エラー:', error);
-			alert(error.message || '全体調整に失敗しました');
-		} finally {
-			isRegenerating = false;
-		}
-	}
 </script>
 
 <svelte:head>
-	<title>PDF to Video Generator</title>
+	<title>longan - PDF to Video Generator</title>
 </svelte:head>
 
 <main class="container">
 	<header>
-		<h1>🎬 PDF to Video Generator</h1>
-		<p>PDFスライドからVOICEVOXキャラクターによる対話動画を自動生成</p>
+		<div class="header-content">
+			<div>
+				<h1>🎬 longan</h1>
+				<p>PDFスライドからVOICEVOXキャラクターによる対話動画を自動生成</p>
+			</div>
+			<a href="/settings" class="settings-link">
+				⚙️ LLM設定
+			</a>
+		</div>
 	</header>
 
 	{#if currentStep === 'upload' && !currentJob}
@@ -965,31 +953,34 @@
 				</button>
 			</div>
 
-			{#if editingDialogue}
-				<div class="edit-notice">
-					<span class="notice-icon">⚠️</span>
-					<span class="notice-text">
-						<strong>編集時の注意：</strong>英単語はカタカナで入力してください。
-						アルファベットのまま入力すると音声生成時に正しく読み上げられない場合があります。
-						<br>
-						例: API → エーピーアイ、Claude → クロード、AI → エーアイ
-					</span>
-				</div>
-			{/if}
+			<div class="edit-notice">
+				<span class="notice-icon">⚠️</span>
+				<span class="notice-text">
+					<strong>編集時の注意：</strong>英単語はカタカナで入力してください。
+					アルファベットのまま入力すると音声生成時に正しく読み上げられない場合があります。
+					<br>
+					例: API → エーピーアイ、Claude → クロード、USB → ユーエスビー、CLI → シーエルアイ
+				</span>
+			</div>
 
 			<div class="additional-prompt-section">
-				<label for="additional-prompt">AIへの追加指示（再生成時に使用）:</label>
+				<label for="additional-prompt">
+					AIへの追加指示（再生成時に使用）
+					{#if editingDialogue}
+						<span style="color: #999;">※編集中は使用できません</span>
+					{/if}
+				:</label>
 				<textarea 
 					id="additional-prompt"
 					bind:value={additionalPrompt}
 					placeholder="例: 1枚目のスライドをもっとカジュアルに / 全体的に初心者向けに / 最初と最後のスライドを修正"
 					rows="3"
-					disabled={isRegenerating}
+					disabled={isRegenerating || editingDialogue}
 				></textarea>
 				<button 
 					class="regenerate-btn" 
 					on:click={() => currentJob && generateDialogue(currentJob.job_id, true)}
-					disabled={currentJob?.status === 'generating_dialogue' || isRegenerating || !additionalPrompt.trim()}
+					disabled={currentJob?.status === 'generating_dialogue' || isRegenerating || !additionalPrompt.trim() || editingDialogue}
 				>
 					{isRegenerating ? '⏳ 再生成中...' : '🔄 スクリプト再生成'}
 				</button>
@@ -1156,6 +1147,24 @@
 			</div>
 		</section>
 	{/if}
+	
+	<!-- APIキー警告ポップアップ -->
+	{#if showApiKeyWarning}
+		<div class="modal-overlay" on:click={() => showApiKeyWarning = false}>
+			<div class="api-key-warning" on:click|stopPropagation>
+				<h2>⚠️ LLMプロバイダーの設定が必要です</h2>
+				<p>AIによる対話生成を利用するには、LLMプロバイダーのAPIキーを設定してください。</p>
+				<div class="warning-actions">
+					<a href="/settings" class="primary-btn">
+						⚙️ 設定画面へ
+					</a>
+					<button class="secondary-btn" on:click={() => showApiKeyWarning = false}>
+						後で設定
+					</button>
+				</div>
+			</div>
+		</div>
+	{/if}
 </main>
 
 {#if modalImageUrl}
@@ -1176,8 +1185,33 @@
 	}
 
 	header {
-		text-align: center;
 		margin-bottom: 3rem;
+	}
+
+	.header-content {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.header-content > div {
+		text-align: center;
+		flex: 1;
+	}
+
+	.settings-link {
+		background-color: #6b7280;
+		color: white;
+		padding: 0.5rem 1rem;
+		border-radius: 8px;
+		text-decoration: none;
+		font-size: 0.9rem;
+		transition: background-color 0.3s ease;
+		white-space: nowrap;
+	}
+
+	.settings-link:hover {
+		background-color: #4b5563;
 	}
 
 	header h1 {
@@ -2120,5 +2154,76 @@
 	.modal-close:hover {
 		background-color: #f3f4f6;
 		transform: scale(1.1);
+	}
+
+	/* APIキー警告ポップアップ */
+	.api-key-warning {
+		background-color: white;
+		border-radius: 12px;
+		padding: 2rem;
+		max-width: 500px;
+		box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+		animation: slideUp 0.3s ease-out;
+	}
+
+	@keyframes slideUp {
+		from {
+			opacity: 0;
+			transform: translateY(20px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	.api-key-warning h2 {
+		font-size: 1.5rem;
+		margin-bottom: 1rem;
+		color: #dc2626;
+	}
+
+	.api-key-warning p {
+		margin-bottom: 1.5rem;
+		color: #4b5563;
+		line-height: 1.6;
+	}
+
+	.warning-actions {
+		display: flex;
+		gap: 1rem;
+		justify-content: center;
+	}
+
+	.warning-actions .primary-btn {
+		background-color: #2563eb;
+		color: white;
+		padding: 0.75rem 2rem;
+		border-radius: 8px;
+		text-decoration: none;
+		font-weight: 500;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		transition: background-color 0.3s ease;
+	}
+
+	.warning-actions .primary-btn:hover {
+		background-color: #1d4ed8;
+	}
+
+	.warning-actions .secondary-btn {
+		background-color: #e5e7eb;
+		color: #4b5563;
+		padding: 0.75rem 2rem;
+		border-radius: 8px;
+		border: none;
+		font-weight: 500;
+		cursor: pointer;
+		transition: background-color 0.3s ease;
+	}
+
+	.warning-actions .secondary-btn:hover {
+		background-color: #d1d5db;
 	}
 </style>

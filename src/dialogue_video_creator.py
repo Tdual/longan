@@ -113,15 +113,16 @@ class DialogueVideoCreator:
             fps=fps,
             codec='libx264',
             audio_codec='aac',
-            preset='fast',  # 処理速度と品質のバランス
-            threads=8,
-            bitrate='2000k',  # 高画質のためにビットレートを上げる
-            audio_bitrate='192k',  # 音声品質も向上
+            preset='faster',  # 処理速度を優先しつつ品質も維持
+            threads=16,  # スレッド数を増やして並列処理を強化
+            bitrate='1500k',  # ビットレートを少し下げて処理速度改善
+            audio_bitrate='192k',  # 音声品質は維持
             temp_audiofile=None,
             remove_temp=True,
             verbose=False,
             logger='bar',
-            write_logfile=False
+            write_logfile=False,
+            ffmpeg_params=['-max_muxing_queue_size', '1024']  # メモリ不足対策
         )
         
         # リソースを解放

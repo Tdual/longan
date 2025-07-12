@@ -3,19 +3,46 @@ import json
 import re
 from typing import List, Dict, Optional
 from pathlib import Path
-from openai import OpenAI
 from dotenv import load_dotenv
+import asyncio
 
 # 環境変数を読み込み
 load_dotenv()
 
 class DialogueGenerator:
     def __init__(self):
-        self.api_key = os.getenv("OPENAI_API_KEY")
-        if not self.api_key:
-            raise ValueError("OPENAI_API_KEY が設定されていません")
+        # LLMプロバイダーシステムを使用
+        from .settings_manager import SettingsManager
+        from .llm_provider import LLMFactory, LLMConfig, LLMProvider
         
-        self.client = OpenAI(api_key=self.api_key)
+        self.settings_manager = SettingsManager()
+        settings = self.settings_manager.get_settings()
+        
+        # デフォルトプロバイダーを取得
+        provider_name = settings.get("default_provider", "openai")
+        api_key = self.settings_manager.get_api_key(provider_name)
+        
+        if not api_key:
+            # 後方互換性のため、OpenAI APIキーをチェック
+            if provider_name == "openai":
+                api_key = os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    raise ValueError("APIキーが設定されていません。設定画面から設定してください。")
+            else:
+                raise ValueError(f"{provider_name}のAPIキーが設定されていません。設定画面から設定してください。")
+        
+        # LLMクライアントを作成
+        config = LLMConfig(
+            provider=LLMProvider(provider_name),
+            api_key=api_key,
+            model_id=settings.get("default_model", {}).get(provider_name),
+            temperature=settings.get("temperature", 0.7),
+            max_tokens=settings.get("max_tokens", 4000),
+            region=settings.get("bedrock_region") if provider_name == "bedrock" else None
+        )
+        self.llm = LLMFactory.create(config)
+        self.default_temperature = settings.get("temperature", 0.7)
+        self.default_max_tokens = settings.get("max_tokens", 4000)
     
     def analyze_regeneration_request(self, user_instruction: str, total_slides: int) -> List[int]:
         """ユーザーの指示から再生成するスライド番号を判断"""
@@ -43,19 +70,16 @@ class DialogueGenerator:
 どのスライドを再生成すべきか判断してください。"""
         
         try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",  # 軽量なモデルで十分
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.1,  # 確実性を高める
-                max_tokens=500,
+            # 新しいLLMインターフェースを使用（同期的に実行）
+            response_text = asyncio.run(self.llm.generate(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=0.3,  # 判断タスクなので低めの温度
+                max_tokens=500,   # 短い応答で十分
                 response_format={"type": "json_object"}
-            )
+            ))
             
-            content = response.choices[0].message.content
-            if not content:
+            if not response_text:
                 # デフォルトは全スライド
                 return list(range(1, total_slides + 1))
             
@@ -104,20 +128,17 @@ JSON形式で調整係数を返してください。調整が必要ないスラ�
 調整が必要なスライドのみを返してください。"""
         
         try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
+            # 新しいLLMインターフェースを使用
+            response_text = asyncio.run(self.llm.generate(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
                 temperature=0.3,
                 max_tokens=500,
                 response_format={"type": "json_object"}
-            )
+            ))
             
-            content = response.choices[0].message.content
-            if content:
-                adjustments = json.loads(content)
+            if response_text:
+                adjustments = json.loads(response_text)
                 # 文字列キーを整数に変換
                 return {int(k): float(v) for k, v in adjustments.items()}
             else:
@@ -157,20 +178,17 @@ JSON形式で各スライドの重要度係数を返してください。
 各スライドについて、内容の重要性に基づいて0.5〜1.5の係数を割り当ててください。"""
         
         try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
+            # 新しいLLMインターフェースを使用
+            response_text = asyncio.run(self.llm.generate(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
                 temperature=0.3,
                 max_tokens=1000,
                 response_format={"type": "json_object"}
-            )
+            ))
             
-            content = response.choices[0].message.content
-            if content:
-                importance_map = json.loads(content)
+            if response_text:
+                importance_map = json.loads(response_text)
                 # 文字列キーを整数に変換
                 base_importance = {int(k): float(v) for k, v in importance_map.items()}
             else:
@@ -641,20 +659,17 @@ speakerは必ず"speaker1"か"speaker2"を使用してください。
         # リトライループ
         for attempt in range(max_retries):
             try:
-                response = self.client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
+                # 新しいLLMインターフェースを使用
+                response_text = asyncio.run(self.llm.generate(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
                     temperature=0.8,
                     max_tokens=3000,  # 単一スライドなので少なめでOK
                     response_format={"type": "json_object"}
-                )
+                ))
                 
                 # レスポンスをパース
-                content = response.choices[0].message.content
-                if not content:
+                if not response_text:
                     print(f"スライド{slide_number}の応答が空です（試行{attempt+1}/{max_retries}）")
                     if attempt < max_retries - 1:
                         continue
@@ -663,7 +678,7 @@ speakerは必ず"speaker1"か"speaker2"を使用してください。
                 
                 # JSONとして解析
                 try:
-                    parsed_content = json.loads(content)
+                    parsed_content = json.loads(response_text)
                     
                     # もし配列でなくオブジェクトで返された場合、配列を取り出す
                     if isinstance(parsed_content, dict):
@@ -784,24 +799,21 @@ speakerは必ず"speaker1"か"speaker2"を使用してください。
             user_prompt += "\n\n追加の指示：\n{}".format(additional_prompt)
 
         try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
+            # 新しいLLMインターフェースを使用
+            response_text = asyncio.run(self.llm.generate(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
                 temperature=0.8,  # より創造的な会話のために少し上げる
                 max_tokens=8000,  # より長い会話を許可
                 response_format={"type": "json_object"}  # JSON形式を強制
-            )
+            ))
             
             # レスポンスをパース
-            content = response.choices[0].message.content
-            if not content:
-                raise Exception("OpenAIからの応答が空です")
+            if not response_text:
+                raise Exception("LLMからの応答が空です")
             
             try:
-                dialogue_data = json.loads(content)
+                dialogue_data = json.loads(response_text)
                 # 必要なキーが存在するか確認
                 expected_keys = [f"slide_{i+1}" for i in range(len(slide_texts))]
                 if all(key in dialogue_data for key in expected_keys):

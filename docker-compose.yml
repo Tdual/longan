@@ -27,11 +27,21 @@ services:
       - ./data:/app/data
       - ./api:/app/api
       - ./src:/app/src
+      - ./.env:/app/.env
+      - ./.env.example:/app/.env.example
     depends_on:
       - voicevox
     networks:
       - app-network
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
 
   # Svelte フロントエンド
   frontend:

@@ -24,6 +24,7 @@ class JobStatus(BaseModel):
     message: Optional[str] = None
     result_url: Optional[str] = None
     error: Optional[str] = None
+    estimated_duration: Optional[int] = None  # 推定動画時間（秒）
 
 class JobCreateResponse(BaseModel):
     job_id: str
@@ -48,12 +49,18 @@ class UpdateDialogueRequest(BaseModel):
     job_id: str
     dialogue_data: Dict[str, List[Dict]]  # 編集された対話データ
 
-class RefineDialogueRequest(BaseModel):
-    job_id: str
-    adjustment_prompt: Optional[str] = None  # 全体調整のための追加指示
 
 # FastAPIアプリケーション
 app = FastAPI(title="Gen Movie API", version="1.0.0")
+
+# アプリケーション起動時に設定を初期化
+@app.on_event("startup")
+async def startup_event():
+    """アプリケーション起動時の処理"""
+    from api.core.settings_manager import SettingsManager
+    # SettingsManagerを初期化することで.envファイルのチェックとコピーが実行される
+    settings = SettingsManager()
+    print("設定マネージャーを初期化しました")
 
 # CORS設定（開発用）
 app.add_middleware(
@@ -275,16 +282,19 @@ async def generate_dialogue_only(
     
     if job.status not in ["slides_ready", "dialogue_ready"]:
         if job.status == "generating_dialogue":
+            print(f"エラー: 対話生成が進行中です。ジョブID: {job_id}, ステータス: {job.status}")
             raise HTTPException(
                 status_code=400, 
                 detail="対話生成が進行中です。完了までお待ちください。"
             )
         elif job.status == "failed":
+            print(f"エラー: 前回の処理が失敗しています。ジョブID: {job_id}, エラー: {job.error}")
             raise HTTPException(
                 status_code=400,
                 detail=f"前回の処理が失敗しています: {job.error}"
             )
         else:
+            print(f"エラー: 対話生成できない状態です。ジョブID: {job_id}, ステータス: {job.status}")
             raise HTTPException(
                 status_code=400, 
                 detail=f"対話生成できない状態です: {job.status}"
@@ -600,7 +610,17 @@ async def upload_dialogue_csv(
     job.message = "CSVから対話スクリプトをインポートしました"
     job.updated_at = datetime.now()
     
-    return {"message": f"対話スクリプトをインポートしました（{len(dialogue_data)}スライド）", "slide_count": len(dialogue_data)}
+    # 推定時間を再計算
+    total_seconds = estimate_video_duration(dialogue_data)
+    
+    return {
+        "message": f"対話スクリプトをインポートしました（{len(dialogue_data)}スライド）", 
+        "slide_count": len(dialogue_data),
+        "estimated_duration": {
+            "seconds": total_seconds,
+            "formatted": format_duration(total_seconds)
+        }
+    }
 
 @app.put("/api/jobs/{job_id}/dialogue")
 async def update_dialogue(
@@ -633,93 +653,16 @@ async def update_dialogue(
     job.message = "対話スクリプトが更新されました"
     job.updated_at = datetime.now()
     
-    return {"message": "対話スクリプトを更新しました"}
-
-@app.post("/api/jobs/{job_id}/refine-dialogue")
-async def refine_dialogue(
-    job_id: str,
-    request: RefineDialogueRequest
-):
-    """対話スクリプト全体を調整し、英語をカタカナに変換"""
+    # 推定時間を再計算
+    total_seconds = estimate_video_duration(request.dialogue_data)
     
-    if job_id not in jobs_db:
-        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
-    
-    job = jobs_db[job_id]
-    
-    # 現在の対話データを読み込み
-    data_dir = Path.cwd() / "data" / job_id
-    dialogue_path = data_dir / "dialogue_narration_katakana.json"
-    
-    if not dialogue_path.exists():
-        raise HTTPException(status_code=404, detail="対話データが見つかりません")
-    
-    with open(dialogue_path, 'r', encoding='utf-8') as f:
-        current_dialogue = json.load(f)
-    
-    # メタデータからスピーカー情報を取得
-    metadata_path = UPLOAD_DIR / job_id / "metadata.json"
-    if metadata_path.exists():
-        with open(metadata_path, 'r', encoding='utf-8') as f:
-            metadata = json.load(f)
-            speaker_info = {
-                "speaker1": metadata.get("speaker1", {}),
-                "speaker2": metadata.get("speaker2", {})
-            }
-    else:
-        speaker_info = None
-    
-    # ステータス更新
-    job.status = "refining_dialogue"
-    job.message = "対話スクリプトを全体調整中..."
-    job.updated_at = datetime.now()
-    
-    # 全体調整とカタカナ変換
-    from api.core.dialogue_refiner import DialogueRefiner
-    refiner = DialogueRefiner()
-    
-    try:
-        # 全体調整と英語→カタカナ変換
-        refined_dialogue = refiner.refine_and_convert_to_katakana(
-            current_dialogue,
-            speaker_info=speaker_info,
-            adjustment_prompt=request.adjustment_prompt
-        )
-        
-        # 調整後のデータを保存
-        with open(dialogue_path, 'w', encoding='utf-8') as f:
-            json.dump(refined_dialogue, f, ensure_ascii=False, indent=2)
-        
-        # originalも同じ内容で更新
-        original_path = data_dir / "dialogue_narration_original.json"
-        with open(original_path, 'w', encoding='utf-8') as f:
-            json.dump(refined_dialogue, f, ensure_ascii=False, indent=2)
-        
-        # 推定時間を再計算
-        from api.core.dialogue_generator import DialogueGenerator
-        generator = DialogueGenerator(job_id, Path.cwd())
-        estimated_duration = generator.calculate_duration(refined_dialogue)
-        
-        # ステータス更新
-        job.status = "dialogue_ready"
-        job.message = "対話スクリプトの全体調整が完了しました"
-        job.updated_at = datetime.now()
-        
-        return {
-            "message": "対話スクリプトを調整しました",
-            "dialogue_data": refined_dialogue,
-            "estimated_duration": {
-                "seconds": estimated_duration,
-                "formatted": f"{int(estimated_duration // 60)}分{int(estimated_duration % 60)}秒"
-            }
+    return {
+        "message": "対話スクリプトを更新しました",
+        "estimated_duration": {
+            "seconds": total_seconds,
+            "formatted": format_duration(total_seconds)
         }
-        
-    except Exception as e:
-        job.status = "failed"
-        job.error = str(e)
-        job.message = "対話スクリプトの調整に失敗しました"
-        job.updated_at = datetime.now()
-        raise HTTPException(status_code=500, detail=str(e))
+    }
 
 @app.post("/api/jobs/{job_id}/generate-video")
 async def generate_video_complete(
@@ -861,10 +804,158 @@ async def delete_job(job_id: str):
     
     return {"message": "ジョブを削除しました"}
 
+# LLMプロバイダー設定関連のエンドポイント
+@app.get("/api/settings/providers")
+async def get_providers():
+    """利用可能なLLMプロバイダーの一覧と状態を取得"""
+    settings_manager = SettingsManager()
+    
+    # 利用可能なプロバイダー
+    available_providers = LLMFactory.get_available_providers()
+    
+    # APIキーの状態
+    key_status = settings_manager.get_all_keys_status()
+    
+    # 現在の設定
+    settings = settings_manager.get_settings()
+    
+    # 結果を統合
+    providers = []
+    for provider_info in available_providers:
+        provider_id = provider_info["id"]
+        status = key_status.get(provider_id.value, {})
+        
+        providers.append({
+            "id": provider_id.value,
+            "name": provider_info["name"],
+            "models": provider_info["models"],
+            "configured": status.get("configured", False),
+            "masked_key": status.get("masked_key"),
+            "key_source": status.get("source"),
+            "requires_region": provider_info.get("requires_region", False),
+            "region": status.get("region") if provider_id.value == "bedrock" else None
+        })
+    
+    return {
+        "providers": providers,
+        "default_provider": settings.get("default_provider"),
+        "default_models": settings.get("default_model"),
+        "temperature": settings.get("temperature"),
+        "max_tokens": settings.get("max_tokens")
+    }
+
+class ProviderConfig(BaseModel):
+    provider: str
+    api_key: str
+    region: Optional[str] = None  # AWS Bedrockの場合
+    model: Optional[str] = None
+
+@app.post("/api/settings/provider")
+async def save_provider_config(config: ProviderConfig):
+    """プロバイダーの設定とAPIキーを保存"""
+    settings_manager = SettingsManager()
+    
+    # APIキーを保存
+    settings_manager.save_api_key(config.provider, config.api_key)
+    
+    # AWS Bedrockの場合はリージョンも保存
+    if config.provider == "bedrock" and config.region:
+        # 環境変数に設定（一時的）
+        os.environ["AWS_DEFAULT_REGION"] = config.region
+    
+    # デフォルトプロバイダーとして設定
+    settings = settings_manager.get_settings()
+    settings["default_provider"] = config.provider
+    if config.model:
+        if "default_model" not in settings:
+            settings["default_model"] = {}
+        settings["default_model"][config.provider] = config.model
+    settings_manager.save_settings(settings)
+    
+    return {"message": "プロバイダー設定を保存しました"}
+
+@app.delete("/api/settings/provider/{provider}")
+async def delete_provider_config(provider: str):
+    """プロバイダーの設定を削除"""
+    settings_manager = SettingsManager()
+    
+    # APIキーを削除
+    settings_manager.delete_api_key(provider)
+    
+    # デフォルトプロバイダーだった場合は変更
+    settings = settings_manager.get_settings()
+    if settings.get("default_provider") == provider:
+        # 他の設定済みプロバイダーを探す
+        key_status = settings_manager.get_all_keys_status()
+        for other_provider, status in key_status.items():
+            if other_provider != provider and status.get("configured"):
+                settings["default_provider"] = other_provider
+                break
+        else:
+            # 設定済みプロバイダーがない場合はOpenAIをデフォルトに
+            settings["default_provider"] = "openai"
+    
+    settings_manager.save_settings(settings)
+    
+    return {"message": "プロバイダー設定を削除しました"}
+
+class TestKeyRequest(BaseModel):
+    provider: str
+    api_key: str
+    region: Optional[str] = None  # AWS Bedrockの場合
+
+@app.post("/api/settings/test-key")
+async def test_api_key(request: TestKeyRequest):
+    """APIキーの有効性をテスト"""
+    settings_manager = SettingsManager()
+    
+    # AWS Bedrockの場合は一時的にリージョンを設定
+    if request.provider == "bedrock" and request.region:
+        old_region = os.environ.get("AWS_DEFAULT_REGION")
+        os.environ["AWS_DEFAULT_REGION"] = request.region
+    
+    try:
+        result = await settings_manager.test_api_key(request.provider, request.api_key, request.region)
+        return result
+    finally:
+        # AWS Bedrockのリージョンを元に戻す
+        if request.provider == "bedrock" and request.region:
+            if old_region:
+                os.environ["AWS_DEFAULT_REGION"] = old_region
+            else:
+                os.environ.pop("AWS_DEFAULT_REGION", None)
+
+class SettingsUpdate(BaseModel):
+    default_provider: Optional[str] = None
+    default_model: Optional[Dict[str, str]] = None
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
+
+@app.put("/api/settings")
+async def update_settings(update: SettingsUpdate):
+    """全般的な設定を更新"""
+    settings_manager = SettingsManager()
+    settings = settings_manager.get_settings()
+    
+    if update.default_provider is not None:
+        settings["default_provider"] = update.default_provider
+    if update.default_model is not None:
+        settings["default_model"] = update.default_model
+    if update.temperature is not None:
+        settings["temperature"] = update.temperature
+    if update.max_tokens is not None:
+        settings["max_tokens"] = update.max_tokens
+    
+    settings_manager.save_settings(settings)
+    
+    return {"message": "設定を更新しました"}
+
 # コア機能のインポート
 from api.core.pdf_processor import PDFProcessor
 from api.core.audio_generator import AudioGenerator
 from api.core.video_creator import VideoCreator
+from api.core.settings_manager import SettingsManager
+from api.core.llm_provider import LLMFactory, LLMProvider
 
 # バックグラウンドタスク（本番ではAWS Batchで実行）
 async def convert_pdf_to_slides(job_id: str, pdf_path: str, target_duration: int = 10, metadata: dict = None):
@@ -1023,6 +1114,10 @@ async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] =
             katakana_path = data_dir / "dialogue_narration_katakana.json"
             with open(katakana_path, 'w', encoding='utf-8') as f:
                 json.dump(dialogue_data, f, ensure_ascii=False, indent=2)
+            
+            # 推定時間を計算して保存
+            total_seconds = estimate_video_duration(dialogue_data)
+            job.estimated_duration = total_seconds
         else:
             # 通常の生成
             # メタデータから会話スタイルプロンプトを取得
@@ -1040,6 +1135,12 @@ async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] =
                 target_duration=target_duration,
                 speaker_info=speaker_info
             )
+            
+            # 推定時間を計算して保存
+            with open(dialogue_path, 'r', encoding='utf-8') as f:
+                dialogue_data = json.load(f)
+            total_seconds = estimate_video_duration(dialogue_data)
+            job.estimated_duration = total_seconds
         
         # 完了
         job.status = "dialogue_ready"

@@ -2,13 +2,42 @@
 対話スクリプトの全体調整と英語→カタカナ変換
 """
 from typing import Dict, List, Optional
-from openai import OpenAI
 import os
 import re
+import asyncio
 
 class DialogueRefiner:
     def __init__(self):
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        # LLMプロバイダーシステムを使用
+        from .settings_manager import SettingsManager
+        from .llm_provider import LLMFactory, LLMConfig, LLMProvider
+        
+        self.settings_manager = SettingsManager()
+        settings = self.settings_manager.get_settings()
+        
+        # デフォルトプロバイダーを取得
+        provider_name = settings.get("default_provider", "openai")
+        api_key = self.settings_manager.get_api_key(provider_name)
+        
+        if not api_key:
+            # 後方互換性のため、OpenAI APIキーをチェック
+            if provider_name == "openai":
+                api_key = os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    raise ValueError("APIキーが設定されていません。設定画面から設定してください。")
+            else:
+                raise ValueError(f"{provider_name}のAPIキーが設定されていません。設定画面から設定してください。")
+        
+        # LLMクライアントを作成
+        config = LLMConfig(
+            provider=LLMProvider(provider_name),
+            api_key=api_key,
+            model_id=settings.get("default_model", {}).get(provider_name),
+            temperature=settings.get("temperature", 0.7),
+            max_tokens=settings.get("max_tokens", 4000),
+            region=settings.get("bedrock_region") if provider_name == "bedrock" else None
+        )
+        self.llm = LLMFactory.create(config)
     
     def refine_and_convert_to_katakana(
         self, 
@@ -77,18 +106,13 @@ class DialogueRefiner:
             user_prompt += f"\n\n追加の指示: {adjustment_prompt}"
         user_prompt += f"\n\n対話スクリプト:\n{dialogue_text}"
         
-        # GPTで調整
-        response = self.client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
+        # LLMで調整
+        refined_text = asyncio.run(self.llm.generate(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
             temperature=0.3,
             max_tokens=4000
-        )
-        
-        refined_text = response.choices[0].message.content
+        ))
         
         # 調整されたテキストを元の形式に戻す
         refined_dialogue = self._parse_refined_dialogue(refined_text, dialogue_data)
@@ -176,18 +200,13 @@ class DialogueRefiner:
 
         user_prompt = f"以下の対話スクリプト内のすべての英語・ローマ字をカタカナに変換してください。後半のスライドまで漏れなく確認してください。\n\n対話スクリプト:\n{dialogue_text}"
         
-        # GPTでカタカナ変換
-        response = self.client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
+        # LLMでカタカナ変換
+        refined_text = asyncio.run(self.llm.generate(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
             temperature=0.1,  # より確実な変換のため低温度
             max_tokens=4000
-        )
-        
-        refined_text = response.choices[0].message.content
+        ))
         
         # 調整されたテキストを元の形式に戻す
         refined_dialogue = self._parse_refined_dialogue(refined_text, dialogue_data)
@@ -241,18 +260,13 @@ class DialogueRefiner:
 
         user_prompt = f"以下の対話スクリプトの表記揺れを修正し、全体で一貫した表記に統一してください。\n\n対話スクリプト:\n{dialogue_text}"
         
-        # GPTで表記統一
-        response = self.client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
+        # LLMで表記統一
+        refined_text = asyncio.run(self.llm.generate(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
             temperature=0.1,  # より確実な統一のため低温度
             max_tokens=4000
-        )
-        
-        refined_text = response.choices[0].message.content
+        ))
         
         # 調整されたテキストを元の形式に戻す
         refined_dialogue = self._parse_refined_dialogue(refined_text, dialogue_data)
