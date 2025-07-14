@@ -116,3 +116,6 @@ bug_report_and_recommendations.md
 
 # Temporary test scripts
 get_voicevox_speakers.py
+
+# Landing page (contains deployment credentials and temporary files)
+sample-landing/
