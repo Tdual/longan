@@ -1,14 +1,19 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
+  import { goto } from "$app/navigation";
+  import { authenticatedFetch } from "$lib/auth";
   // getApiUrl は削除されました - 直接URLパスを使用
 
   interface Job {
     job_id: string;
     status: string;
+    status_ja?: string;
     progress: number;
     message?: string;
+    message_ja?: string;
     result_url?: string;
     error?: string;
+    error_ja?: string;
   }
 
   interface DialogueData {
@@ -60,6 +65,21 @@
   let selectedConversationStyle = "friendly"; // 選択された会話スタイル
   let showApiKeyWarning = false; // APIキー未設定警告の表示
   let hasAnyApiKey = false; // いずれかのAPIキーが設定されているか
+  let isAuthenticated = false; // 認証状態
+  let authEnabled = false; // 認証が有効かどうか
+
+  // ステータス表示用のヘルパー関数
+  function getDisplayStatus(job: Job): string {
+    return job.status_ja || job.status;
+  }
+
+  function getDisplayMessage(job: Job): string {
+    return job.message_ja || job.message || "";
+  }
+
+  function getDisplayError(job: Job): string {
+    return job.error_ja || job.error || "";
+  }
 
   // 会話スタイルの定義
   const conversationStyles = [
@@ -146,7 +166,7 @@
   async function loadSpeakers() {
     speakersLoading = true;
     try {
-      const response = await fetch("/api/speakers");
+      const response = await authenticatedFetch("/api/speakers");
       if (response.ok) {
         availableSpeakers = await response.json();
       }
@@ -158,10 +178,32 @@
   }
 
   onMount(async () => {
+    // 認証チェックを最初に実行
+    await checkAuthStatus();
+
     loadSpeakers();
     // APIキーの設定状態をチェック
     await checkApiKeyStatus();
   });
+
+  async function checkAuthStatus() {
+    try {
+      const response = await authenticatedFetch("/api/auth/status");
+      if (response.ok) {
+        const data = await response.json();
+        authEnabled = data.auth_enabled;
+        isAuthenticated = data.authenticated;
+
+        // 認証が有効で未認証の場合はログインページにリダイレクト
+        if (authEnabled && !isAuthenticated) {
+          goto("/login");
+          return;
+        }
+      }
+    } catch (error) {
+      console.error("認証状態の確認に失敗:", error);
+    }
+  }
 
   async function checkApiKeyStatus() {
     try {
@@ -1112,7 +1154,7 @@
         {#if isRegenerating && currentJob}
           <div class="regeneration-status">
             <div class="status-message">
-              🤖 {currentJob.message || "AIが修正対象を判断中..."}
+              🤖 {getDisplayMessage(currentJob) || "AIが修正対象を判断中..."}
             </div>
             <div class="progress-bar">
               <div
@@ -1233,16 +1275,16 @@
         </div>
 
         <div class="status-info">
-          <div class="status">ステータス: {currentJob.status}</div>
+          <div class="status">ステータス: {getDisplayStatus(currentJob)}</div>
           <div class="progress-text">{currentJob.progress}% 完了</div>
         </div>
 
-        {#if currentJob.message}
-          <div class="message">{currentJob.message}</div>
+        {#if getDisplayMessage(currentJob)}
+          <div class="message">{getDisplayMessage(currentJob)}</div>
         {/if}
 
-        {#if currentJob.error}
-          <div class="error">❌ {currentJob.error}</div>
+        {#if getDisplayError(currentJob)}
+          <div class="error">❌ {getDisplayError(currentJob)}</div>
         {/if}
 
         {#if currentJob.status === "completed" && currentJob.result_url}

@@ -1,0 +1,65 @@
+services:
+  # VOICEVOX エンジン
+  voicevox:
+    image: voicevox/voicevox_engine:cpu-ubuntu20.04-latest
+    ports:
+      - "50022:50021" # 開発用ポート
+    networks:
+      - app-network-dev
+
+  # FastAPI アプリケーション
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8003:8000" # 開発用ポート
+    environment:
+      - VOICEVOX_URL=http://voicevox:50021
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    volumes:
+      - ./uploads:/app/uploads
+      - ./output:/app/output
+      - ./slides:/app/slides
+      - ./audio:/app/audio
+      - ./data:/app/data
+      - ./api:/app/api
+      - ./src:/app/src
+      - ./.env:/app/.env
+      - ./.env.example:/app/.env.example
+    depends_on:
+      - voicevox
+    networks:
+      - app-network-dev
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 8G
+        reservations:
+          cpus: "2"
+          memory: 4G
+
+  # Svelte フロントエンド
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3000" # 開発用ポート
+    environment:
+      - NODE_ENV=production
+      - VITE_API_URL=http://localhost:8003 # 開発用APIポート
+      - INTERNAL_API_URL=http://api:8000
+      - ORIGIN=http://localhost:3001 # 開発用フロントエンドポート
+    depends_on:
+      - api
+    networks:
+      - app-network-dev
+
+networks:
+  app-network-dev:
+    driver: bridge

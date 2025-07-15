@@ -118,4 +118,17 @@ bug_report_and_recommendations.md
 get_voicevox_speakers.py
 
 # Landing page (contains deployment credentials and temporary files)
-sample-landing/
+landing_page/
+
+# AWS configuration files (contain sensitive information)
+acm-validation-records.json
+bucket-policy.json
+cloudfront-config*.json
+route53-record.json
+
+# Kiro IDE files
+.kiro/
+
+# Presentation files
+longan_presentation.html
+note_article.txt

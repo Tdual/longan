@@ -25,19 +25,29 @@ class DialogueVideoCreator:
                 return np.array([0.0, 0.0])
             return AudioClip(make_frame, duration=duration, fps=fps)
     
-    def apply_end_fade(self, audio_clip):
-        """音声の終わりに短いフェードアウトを適用"""
+    def apply_aggressive_end_processing(self, audio_clip):
+        """音声の終わりを積極的に処理してクリック音を除去"""
         try:
-            fade_duration = 0.05  # 50ms のフェードアウト
+            if audio_clip.duration <= 0.1:
+                return audio_clip
             
+            # 1. 音声の最後の50msを除去（最も効果的）
+            trim_duration = min(0.05, audio_clip.duration * 0.1)  # 最大10%まで
+            if audio_clip.duration > trim_duration * 2:
+                audio_clip = audio_clip.subclip(0, audio_clip.duration - trim_duration)
+            
+            # 2. 長めのフェードアウトを適用
+            fade_duration = min(0.3, audio_clip.duration * 0.3)  # 最大30%まで
             if audio_clip.duration > fade_duration:
-                # 終わりにのみフェードアウトを適用
                 audio_clip = audio_clip.audio_fadeout(fade_duration)
+            
+            # 3. 音量を少し下げる（クリップ防止）
+            audio_clip = audio_clip.volumex(0.85)
             
             return audio_clip
             
         except Exception as e:
-            print(f"フェードアウト適用エラー: {e}")
+            print(f"音声処理エラー: {e}")
             return audio_clip
     
     def create_dialogue_slide(self, image_path, audio_infos):
@@ -53,16 +63,16 @@ class DialogueVideoCreator:
                     # 音声クリップを読み込み
                     audio_clip = AudioFileClip(info["audio_path"])
                     
-                    # 音量を少し下げる
-                    audio_clip = audio_clip.volumex(0.9)
-                    
-                    # 終わりにフェードアウトを適用（ブチッ音対策）
-                    audio_clip = self.apply_end_fade(audio_clip)
+                    # 積極的な音声処理でクリック音を完全除去
+                    audio_clip = self.apply_aggressive_end_processing(audio_clip)
                     
                     audio_clips.append(audio_clip)
                     
-                    # パフォーマンス向上のため無音処理をスキップ
-                    # 各音声クリップ間の無音は除去し、連続再生する
+                    # 音声クリップ間により長い無音時間を追加（完全分離）
+                    if i < len(audio_infos) - 1:  # 最後の音声以外
+                        silence_duration = 0.5  # 500ms の無音に延長
+                        silence = audio_clip.subclip(0, min(0.1, audio_clip.duration)).volumex(0).set_duration(silence_duration)
+                        audio_clips.append(silence)
             
             if audio_clips:
                 # すべての音声を連結
@@ -104,6 +114,11 @@ class DialogueVideoCreator:
         # すべてのクリップを連結
         print("動画を連結中...")
         final_video = concatenate_videoclips(clips, method="compose")
+        
+        # 動画全体の最後に長めのフェードアウトを追加（完全にブチっという音を防ぐ）
+        fade_duration = 1.0  # 1.0秒のフェードアウトに延長
+        if final_video.duration > fade_duration:
+            final_video = final_video.audio_fadeout(fade_duration)
         
         # 動画を出力
         print(f"動画を出力中: {output_path}")
