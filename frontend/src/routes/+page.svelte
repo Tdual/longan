@@ -339,8 +339,10 @@
         progress: 0,
       };
 
+      // 進行状況画面に切り替える（重要！）
+      currentStep = "dialogue";
+
       // ステータス監視開始（対話生成は既にサーバー側で行われる）
-      // currentStepは自動的に更新される
       pollJobStatus(result.job_id);
     } catch (error) {
       console.error("エラー:", error);
@@ -602,9 +604,10 @@
           return; // 完了
         }
 
-        // dialogue編集画面では、generating_dialogue以外はポーリング不要
+        // dialogue編集画面で対話データが既に存在する場合は、generating_dialogue以外はポーリング不要
         if (
           currentStep === "dialogue" &&
+          dialogueData &&
           job.status !== "generating_dialogue"
         ) {
           return;
@@ -754,7 +757,7 @@
     </div>
   </header>
 
-  {#if currentStep === "upload" && !currentJob}
+  {#if currentStep === "upload"}
     <section class="upload-section">
       {#if !selectedFile}
         <div
@@ -969,13 +972,24 @@
             {/if}
           </div>
 
-          <button
-            class="generate-btn"
-            on:click={uploadAndGenerate}
-            disabled={isUploading || playingSampleId !== null}
-          >
-            {isUploading ? "処理中..." : "📝 対話スクリプト生成"}
-          </button>
+          {#if dialogueData && currentJob}
+            <button
+              class="back-to-dialogue-btn"
+              on:click={() => {
+                currentStep = "dialogue";
+              }}
+            >
+              📝 スクリプト編集に戻る
+            </button>
+          {:else}
+            <button
+              class="generate-btn"
+              on:click={uploadAndGenerate}
+              disabled={isUploading || playingSampleId !== null}
+            >
+              {isUploading ? "処理中..." : "📝 対話スクリプト生成"}
+            </button>
+          {/if}
 
           <button class="reset-btn" on:click={resetForm}> リセット </button>
         </div>
@@ -998,12 +1012,15 @@
         <button
           class="back-to-settings-btn"
           on:click={() => {
-            currentStep = "upload";
-            currentJob = null;
-            dialogueData = null;
-            estimatedDuration = null;
-            editingDialogue = false;
-            isRegenerating = false;
+            const confirmed = confirm(
+              "キャラクター設定に戻りますか？\n\n現在の対話スクリプトの内容は保持されますが、編集中の変更は失われる可能性があります。"
+            );
+            if (confirmed) {
+              currentStep = "upload";
+              // currentJobとdialogueDataは保持して、後で戻れるようにする
+              editingDialogue = false;
+              isRegenerating = false;
+            }
           }}
         >
           ⬅️ キャラクター設定に戻る
@@ -1198,7 +1215,7 @@
         {/each}
       </div>
     </section>
-  {:else if currentJob}
+  {:else if currentJob && (isUploading || currentJob.status === "processing" || currentJob.status === "generating_dialogue" || currentStep === "video" || (currentStep === "dialogue" && !dialogueData))}
     <section class="progress-section">
       <div class="job-info">
         <h3>
@@ -2385,5 +2402,57 @@
 
   .back-to-settings-btn:hover {
     background-color: #4b5563;
+  }
+
+  .dialogue-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    align-items: center;
+  }
+
+  .edit-btn {
+    background-color: #3b82f6;
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+  }
+
+  .edit-btn:hover {
+    background-color: #2563eb;
+  }
+
+  .csv-download-btn,
+  .csv-upload-btn {
+    background-color: #059669;
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+  }
+
+  .csv-download-btn:hover,
+  .csv-upload-btn:hover {
+    background-color: #047857;
+  }
+
+  .back-to-dialogue-btn {
+    background-color: #3b82f6;
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+  }
+
+  .back-to-dialogue-btn:hover {
+    background-color: #2563eb;
   }
 </style>
