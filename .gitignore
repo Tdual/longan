@@ -95,7 +95,8 @@ create_*_temp.py
 README_VOICEVOX.md
 
 # Data directories (contain generated content)
-data/
+data/*
+!data/.gitkeep
 uploads/
 simple_data/
 test_data/
