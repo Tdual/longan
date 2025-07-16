@@ -51,6 +51,7 @@ Thumbs.db
 
 # Claude Code
 .claude/
+CLAUDE.md
 
 # Generated output directories
 slides/
