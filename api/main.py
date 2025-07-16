@@ -26,6 +26,7 @@ class JobStatus(BaseModel):
     result_url: Optional[str] = None
     error_code: Optional[str] = None  # エラーコード (FILE_NOT_FOUND, INVALID_FORMAT, etc.)
     estimated_duration: Optional[int] = None  # 推定動画時間（秒）
+    target_duration: Optional[int] = None  # 目標動画時間（分）
 
 class JobCreateResponse(BaseModel):
     job_id: str
@@ -154,7 +155,8 @@ async def upload_pdf(
         status_code=StatusCode.PDF_UPLOADING,
         created_at=datetime.now(),
         updated_at=datetime.now(),
-        progress=0
+        progress=0,
+        target_duration=target_duration
     )
     jobs_db[job_id] = job_status
     
@@ -1234,7 +1236,24 @@ async def generate_complete_video(job_id: str):
                 job.progress = 25 + int(progress * 0.35)  # 25-60%の範囲で進捗表示
                 job.updated_at = datetime.now()
             
-            dialogue_path = processor.generate_dialogue_from_pdf(pdf_path, progress_callback=update_progress)
+            # ジョブから目標時間を取得
+            target_duration = job.target_duration or 10  # デフォルト10分
+            
+            # メタデータからスピーカー情報を取得
+            metadata_path = job_dir / "metadata.json"
+            metadata = None
+            speaker_info = None
+            if metadata_path.exists():
+                with open(metadata_path, 'r', encoding='utf-8') as f:
+                    metadata = json.load(f)
+                    speaker_info = metadata.get('speakers', {})
+            
+            dialogue_path = processor.generate_dialogue_from_pdf(
+                pdf_path, 
+                progress_callback=update_progress,
+                target_duration=target_duration,
+                speaker_info=speaker_info
+            )
         else:
             # 既存の対話データを使用
             job.progress = 60
