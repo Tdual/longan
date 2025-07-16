@@ -9,21 +9,13 @@ class DialogueVideoCreator:
     
     def create_silence(self, duration, fps=22050):
         """効率的な無音クリップを作成"""
-        # 実際の音声ファイルからテンプレートを作って無音を生成（より確実）
-        from moviepy.editor import AudioFileClip
+        # 純粋な無音データを作成（ノイズを含まない）
+        def make_frame(t):
+            # 完全な無音（ステレオ）
+            return np.zeros((2,))
         
-        # 最初の音声ファイルをテンプレートとして使用
-        template_files = list(Path("audio").glob("**/*.wav"))
-        if template_files:
-            template_audio = AudioFileClip(str(template_files[0]))
-            silence = template_audio.subclip(0, min(0.1, template_audio.duration)).volumex(0).set_duration(duration)
-            template_audio.close()
-            return silence
-        else:
-            # フォールバック: 直接作成
-            def make_frame(t):
-                return np.array([0.0, 0.0])
-            return AudioClip(make_frame, duration=duration, fps=fps)
+        # サンプリングレートは音声ファイルと同じにする
+        return AudioClip(make_frame, duration=duration, fps=fps)
     
     def apply_aggressive_end_processing(self, audio_clip):
         """音声の終わりを積極的に処理してクリック音を除去"""
@@ -71,7 +63,7 @@ class DialogueVideoCreator:
                     # 音声クリップ間により長い無音時間を追加（完全分離）
                     if i < len(audio_infos) - 1:  # 最後の音声以外
                         silence_duration = 0.5  # 500ms の無音に延長
-                        silence = audio_clip.subclip(0, min(0.1, audio_clip.duration)).volumex(0).set_duration(silence_duration)
+                        silence = self.create_silence(silence_duration)
                         audio_clips.append(silence)
             
             if audio_clips:
@@ -80,11 +72,8 @@ class DialogueVideoCreator:
                 
                 # 全体の最後に短い余白を追加
                 final_silence_duration = 1.0  # 1秒に短縮
-                # 最後の音声クリップを使って無音を作成
-                if audio_clips:
-                    last_audio = audio_clips[0]  # 最初の音声を使用
-                    final_silence = last_audio.subclip(0, min(0.1, last_audio.duration)).volumex(0).set_duration(final_silence_duration)
-                    combined_audio = concatenate_audioclips([combined_audio, final_silence])
+                final_silence = self.create_silence(final_silence_duration)
+                combined_audio = concatenate_audioclips([combined_audio, final_silence])
                 
                 duration = combined_audio.duration
                 image_clip = image_clip.set_duration(duration)
