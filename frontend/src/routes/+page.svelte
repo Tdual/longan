@@ -605,7 +605,11 @@
         }
 
         const response = await fetch(`/api/jobs/${jobId}/status`);
-        if (!response.ok) return;
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          const errorMessage = errorData.detail || `ステータス取得エラー (${response.status})`;
+          throw new Error(errorMessage);
+        }
 
         const job = await response.json();
         currentJob = job;
@@ -638,10 +642,18 @@
             isRegenerating = false;
             return; // ポーリング停止
           }
-        } else if (job.status === "completed" || job.status === "failed") {
-          console.log("処理完了/失敗:", job.status);
+        } else if (job.status === "completed") {
+          console.log("処理完了:", job.status);
           isRegenerating = false;
           return; // 完了
+        } else if (job.status === "failed") {
+          console.log("処理失敗:", job.status);
+          isRegenerating = false;
+          // エラー表示を設定
+          if (currentJob) {
+            currentJob.error = getDisplayError(job) || "処理に失敗しました";
+          }
+          return; // ポーリング停止
         }
 
         // dialogue編集画面で対話データが既に存在する場合は、generating_dialogue以外はポーリング不要
@@ -657,6 +669,12 @@
         setTimeout(poll, 3000);
       } catch (error) {
         console.error("ステータス取得エラー:", error);
+        // エラー表示を設定
+        if (currentJob) {
+          currentJob.error = error.message || "ステータスの取得に失敗しました";
+        }
+        // エラー発生時もポーリングを継続（ネットワークエラーの可能性）
+        setTimeout(poll, 5000); // 少し長めの間隔で再試行
       }
     };
 
@@ -1286,6 +1304,10 @@
 
         {#if getDisplayError(currentJob)}
           <div class="error">❌ {getDisplayError(currentJob)}</div>
+        {/if}
+        
+        {#if currentJob.error}
+          <div class="error">❌ {currentJob.error}</div>
         {/if}
 
         {#if currentJob.status === "completed" && currentJob.result_url}

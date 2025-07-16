@@ -1191,7 +1191,8 @@ async def generate_complete_video(job_id: str):
         # 1. PDFをスライドに変換（必要な場合のみ）
         slides_dir = Path.cwd() / "slides" / job_id
         if not slides_dir.exists() or not list(slides_dir.glob("slide_*.png")):
-            job.progress = 20
+            job.status_code = StatusCode.PDF_PROCESSING
+            job.progress = 10
             job.updated_at = datetime.now()
             
             # PDFファイルパスを取得
@@ -1203,6 +1204,10 @@ async def generate_complete_video(job_id: str):
             pdf_path = str(pdf_files[0])
             
             # PDFを処理
+            job.status_code = StatusCode.PDF_GENERATING_SLIDES
+            job.progress = 15
+            job.updated_at = datetime.now()
+            
             processor = PDFProcessor(job_id, Path.cwd())
             slide_count = processor.convert_pdf_to_slides(pdf_path)
         else:
@@ -1218,12 +1223,15 @@ async def generate_complete_video(job_id: str):
         
         # 既に対話データが存在するかチェック
         if not dialogue_path.exists():
-            job.progress = 40
+            job.status_code = StatusCode.DIALOGUE_GENERATING
+            job.progress = 25
             job.updated_at = datetime.now()
             
             # 進捗更新用のコールバック
             def update_progress(message: str, progress: float):
-                job.progress = 40 + int(progress * 0.2)  # 40-60%の範囲で進捗表示
+                if "生成中" in message:
+                    job.status_code = StatusCode.DIALOGUE_PROCESSING
+                job.progress = 25 + int(progress * 0.35)  # 25-60%の範囲で進捗表示
                 job.updated_at = datetime.now()
             
             dialogue_path = processor.generate_dialogue_from_pdf(pdf_path, progress_callback=update_progress)
@@ -1234,11 +1242,27 @@ async def generate_complete_video(job_id: str):
             print(f"既存の対話データを使用: {dialogue_path}")
         
         # 3. 音声生成
+        job.status_code = StatusCode.AUDIO_GENERATING
         job.progress = 60
         job.updated_at = datetime.now()
         
+        # 音声生成の進捗を細かく更新
         audio_generator = AudioGenerator(job_id, Path.cwd())
-        audio_count = audio_generator.generate_audio_files(
+        
+        # スライド数を取得して進捗計算用に使用
+        with open(dialogue_path, 'r', encoding='utf-8') as f:
+            dialogue_data = json.load(f)
+        total_slides = len(dialogue_data)
+        
+        # 各スライドの処理前に進捗を更新するためのラッパー
+        original_generate = audio_generator.generate_audio_files
+        def generate_with_progress(*args, **kwargs):
+            # 内部で各スライドを処理する際に進捗を更新
+            job.status_code = StatusCode.AUDIO_PROCESSING_SLIDE
+            result = original_generate(*args, **kwargs)
+            return result
+        
+        audio_count = generate_with_progress(
             speed_scale=1.0,
             pitch_scale=0.0,
             intonation_scale=1.2,
@@ -1246,11 +1270,23 @@ async def generate_complete_video(job_id: str):
         )
         
         # 4. 動画作成
+        job.status_code = StatusCode.VIDEO_CREATING
         job.progress = 80
         job.updated_at = datetime.now()
         
         video_creator = VideoCreator(job_id, Path.cwd())
+        
+        # 動画エンコーディング中のステータス更新
+        job.status_code = StatusCode.VIDEO_ENCODING
+        job.progress = 85
+        job.updated_at = datetime.now()
+        
         video_path = video_creator.create_video()
+        
+        # 動画ファイナライズ
+        job.status_code = StatusCode.VIDEO_FINALIZING
+        job.progress = 95
+        job.updated_at = datetime.now()
         
         # 5. 完了
         job.status = "completed"
