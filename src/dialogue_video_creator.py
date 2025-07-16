@@ -23,18 +23,16 @@ class DialogueVideoCreator:
             if audio_clip.duration <= 0.1:
                 return audio_clip
             
-            # 1. 音声の最後の50msを除去（最も効果的）
-            trim_duration = min(0.05, audio_clip.duration * 0.1)  # 最大10%まで
-            if audio_clip.duration > trim_duration * 2:
-                audio_clip = audio_clip.subclip(0, audio_clip.duration - trim_duration)
+            # 1. 音声の最初と最後に短いフェードを適用（クリック音防止）
+            fade_in_duration = min(0.01, audio_clip.duration * 0.05)  # 10ms または 5%
+            fade_out_duration = min(0.02, audio_clip.duration * 0.1)  # 20ms または 10%
             
-            # 2. 長めのフェードアウトを適用
-            fade_duration = min(0.3, audio_clip.duration * 0.3)  # 最大30%まで
-            if audio_clip.duration > fade_duration:
-                audio_clip = audio_clip.audio_fadeout(fade_duration)
+            if audio_clip.duration > fade_in_duration + fade_out_duration:
+                audio_clip = audio_clip.audio_fadein(fade_in_duration)
+                audio_clip = audio_clip.audio_fadeout(fade_out_duration)
             
-            # 3. 音量を少し下げる（クリップ防止）
-            audio_clip = audio_clip.volumex(0.85)
+            # 2. 音量を正規化（クリップ防止）
+            audio_clip = audio_clip.volumex(0.9)
             
             return audio_clip
             
@@ -67,13 +65,13 @@ class DialogueVideoCreator:
                         audio_clips.append(silence)
             
             if audio_clips:
-                # すべての音声を連結
-                combined_audio = concatenate_audioclips(audio_clips)
+                # 音声クリップをメソッド='compose'で連結（より滑らかな結合）
+                combined_audio = concatenate_audioclips(audio_clips, method="compose")
                 
                 # 全体の最後に短い余白を追加
                 final_silence_duration = 1.0  # 1秒に短縮
                 final_silence = self.create_silence(final_silence_duration)
-                combined_audio = concatenate_audioclips([combined_audio, final_silence])
+                combined_audio = concatenate_audioclips([combined_audio, final_silence], method="compose")
                 
                 duration = combined_audio.duration
                 image_clip = image_clip.set_duration(duration)

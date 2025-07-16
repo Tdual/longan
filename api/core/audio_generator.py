@@ -131,6 +131,10 @@ class AudioGenerator:
                 synthesis_data["intonationScale"] = intonation_scale
                 synthesis_data["volumeScale"] = volume_scale
                 
+                # 音声の前後に短い無音を追加（クリック音防止）
+                synthesis_data["prePhonemeLength"] = 0.1  # 音声前の無音（秒）
+                synthesis_data["postPhonemeLength"] = 0.1  # 音声後の無音（秒）
+                
                 synthesis_response = requests.post(
                     f"{self.voicevox_url}/synthesis",
                     params={"speaker": speaker_id},
