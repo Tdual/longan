@@ -2,18 +2,16 @@
   import { onMount, tick } from "svelte";
   import { goto } from "$app/navigation";
   import { authenticatedFetch } from "$lib/auth";
+  import { t } from "$lib/i18n";
   // getApiUrl は削除されました - 直接URLパスを使用
 
   interface Job {
     job_id: string;
     status: string;
-    status_ja?: string;
+    status_code: string;
     progress: number;
-    message?: string;
-    message_ja?: string;
     result_url?: string;
-    error?: string;
-    error_ja?: string;
+    error_code?: string;
   }
 
   interface DialogueData {
@@ -70,15 +68,15 @@
 
   // ステータス表示用のヘルパー関数
   function getDisplayStatus(job: Job): string {
-    return job.status_ja || job.status;
+    return t(`status.${job.status_code || job.status}`);
   }
 
   function getDisplayMessage(job: Job): string {
-    return job.message_ja || job.message || "";
+    return t(`status.${job.status_code}`);
   }
 
   function getDisplayError(job: Job): string {
-    return job.error_ja || job.error || "";
+    return job.error_code ? t(`errors.${job.error_code}`) : "";
   }
 
   // 会話スタイルの定義
@@ -1068,18 +1066,6 @@
           ⬅️ キャラクター設定に戻る
         </button>
         <button
-          class="edit-btn"
-          on:click={async () => {
-            if (editingDialogue && currentJob) {
-              // 編集を終了する前に保存
-              await updateDialogue(currentJob.job_id);
-            }
-            editingDialogue = !editingDialogue;
-          }}
-        >
-          {editingDialogue ? "編集を終了" : "✏️ スクリプトを編集"}
-        </button>
-        <button
           class="csv-download-btn"
           on:click={async () => {
             if (!currentJob) return;
@@ -1164,6 +1150,21 @@
             </div>
           </div>
         {/if}
+      </div>
+
+      <div class="edit-controls">
+        <button
+          class="edit-btn"
+          on:click={async () => {
+            if (editingDialogue && currentJob) {
+              // 編集を終了する前に保存
+              await updateDialogue(currentJob.job_id);
+            }
+            editingDialogue = !editingDialogue;
+          }}
+        >
+          {editingDialogue ? "編集を終了" : "✏️ スクリプトを編集"}
+        </button>
       </div>
 
       <div class="dialogue-list">

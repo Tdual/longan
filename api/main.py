@@ -13,25 +13,22 @@ import shutil
 import os
 import csv
 import io
+from api.core.status_codes import StatusCode
 
 # モデル定義
 class JobStatus(BaseModel):
     job_id: str
     status: str  # pending, processing, completed, failed
-    status_ja: Optional[str] = None  # 日本語ステータス
+    status_code: str  # ステータスコード (PDF_PROCESSING, DIALOGUE_GENERATING, etc.)
     created_at: datetime
     updated_at: datetime
     progress: int  # 0-100
-    message: Optional[str] = None
-    message_ja: Optional[str] = None  # 日本語メッセージ
     result_url: Optional[str] = None
-    error: Optional[str] = None
-    error_ja: Optional[str] = None  # 日本語エラーメッセージ
+    error_code: Optional[str] = None  # エラーコード (FILE_NOT_FOUND, INVALID_FORMAT, etc.)
     estimated_duration: Optional[int] = None  # 推定動画時間（秒）
 
 class JobCreateResponse(BaseModel):
     job_id: str
-    message: str
 
 class GenerateAudioRequest(BaseModel):
     job_id: str
@@ -154,12 +151,10 @@ async def upload_pdf(
     job_status = JobStatus(
         job_id=job_id,
         status="pending",
-        status_ja=localization_service.get_status_message("pending"),
+        status_code=StatusCode.PDF_UPLOADING,
         created_at=datetime.now(),
         updated_at=datetime.now(),
-        progress=0,
-        message="PDFアップロード完了",
-        message_ja=localization_service.get_progress_message("PDFアップロード完了")
+        progress=0
     )
     jobs_db[job_id] = job_status
     
@@ -189,8 +184,7 @@ async def upload_pdf(
     thread.start()
     
     return JobCreateResponse(
-        job_id=job_id,
-        message="ジョブを作成しました"
+        job_id=job_id
     )
 
 @app.get("/api/jobs/{job_id}/status", response_model=JobStatus)
@@ -223,10 +217,8 @@ async def generate_audio(
     
     # ステータス更新
     job.status = "generating_audio"
-    job.status_ja = localization_service.get_status_message("generating_audio")
+    job.status_code = StatusCode.AUDIO_GENERATING
     job.progress = 30
-    job.message = "音声生成を開始しました"
-    job.message_ja = localization_service.get_progress_message("音声生成を開始しました")
     job.updated_at = datetime.now()
     
     # バックグラウンドで音声生成（本番ではBatchジョブ）
@@ -262,10 +254,8 @@ async def create_video(
     
     # ステータス更新
     job.status = "creating_video"
-    job.status_ja = localization_service.get_status_message("creating_video")
+    job.status_code = StatusCode.VIDEO_CREATING
     job.progress = 70
-    job.message = "動画作成を開始しました"
-    job.message_ja = localization_service.get_progress_message("動画作成を開始しました")
     job.updated_at = datetime.now()
     
     # バックグラウンドで動画作成（本番ではBatchジョブ）
@@ -341,10 +331,8 @@ async def generate_dialogue_only(
     
     # ステータス更新
     job.status = "generating_dialogue"
-    job.status_ja = localization_service.get_status_message("generating_dialogue")
+    job.status_code = StatusCode.DIALOGUE_GENERATING
     job.progress = 30
-    job.message = "対話スクリプトを生成中..."
-    job.message_ja = localization_service.get_progress_message("対話スクリプトを生成中...")
     job.updated_at = datetime.now()
     
     # バックグラウンドで対話生成
@@ -648,9 +636,7 @@ async def upload_dialogue_csv(
     # ジョブステータスを更新
     job = jobs_db[job_id]
     job.status = "dialogue_ready"
-    job.status_ja = localization_service.get_status_message("dialogue_ready")
-    job.message = "CSVから対話スクリプトをインポートしました"
-    job.message_ja = localization_service.get_progress_message("CSVから対話スクリプトをインポートしました")
+    job.status_code = StatusCode.COMPLETED
     job.updated_at = datetime.now()
     
     # 推定時間を再計算
@@ -693,9 +679,7 @@ async def update_dialogue(
     # ジョブステータスを更新
     job = jobs_db[job_id]
     job.status = "dialogue_ready"
-    job.status_ja = localization_service.get_status_message("dialogue_ready")
-    job.message = "対話スクリプトが更新されました"
-    job.message_ja = localization_service.get_progress_message("対話スクリプトが更新されました")
+    job.status_code = StatusCode.COMPLETED
     job.updated_at = datetime.now()
     
     # 推定時間を再計算
@@ -729,10 +713,8 @@ async def generate_video_complete(
     
     # ステータス更新
     job.status = "processing"
-    job.status_ja = localization_service.get_status_message("processing")
+    job.status_code = StatusCode.PROCESSING
     job.progress = 10
-    job.message = "動画生成を開始しました"
-    job.message_ja = localization_service.get_progress_message("動画生成を開始しました")
     job.updated_at = datetime.now()
     
     # バックグラウンドで全工程を実行（スレッドで実行してメインスレッドをブロックしない）
@@ -1003,7 +985,6 @@ from api.core.audio_generator import AudioGenerator
 from api.core.video_creator import VideoCreator
 from api.core.settings_manager import SettingsManager
 from api.core.llm_provider import LLMFactory, LLMProvider
-from api.core.localization import localization_service
 from api.core.auth import auth_manager, require_auth
 
 # バックグラウンドタスク（本番ではAWS Batchで実行）
@@ -1011,20 +992,18 @@ async def convert_pdf_to_slides(job_id: str, pdf_path: str, target_duration: int
     """PDFをスライド画像に変換"""
     try:
         job = jobs_db[job_id]
-        job.message = "PDFをスライドに変換中..."
         job.progress = 10
+        job.status_code = StatusCode.PDF_PROCESSING
         
         # PDFをスライドに変換
         processor = PDFProcessor(job_id, Path.cwd())
         slide_count = processor.convert_pdf_to_slides(pdf_path)
         
-        job.message = "対話スクリプトを生成中..."
         job.progress = 15
         job.updated_at = datetime.now()
         
         # 進捗更新用のコールバック
         def update_progress(message: str, progress: float):
-            job.message = message
             # PDFからスライド変換が15%まで、対話生成が15-95%の範囲
             job.progress = 15 + int(progress * 0.8)  # 15-95%の範囲で進捗表示
             job.updated_at = datetime.now()
@@ -1040,6 +1019,7 @@ async def convert_pdf_to_slides(job_id: str, pdf_path: str, target_duration: int
             conversation_style_prompt = metadata.get('conversation_style_prompt', '')
         
         # 対話データを生成（目安時間とスピーカー情報、会話スタイルを渡す）
+        job.status_code = StatusCode.DIALOGUE_GENERATING
         dialogue_path = await processor.generate_dialogue_from_pdf(
             pdf_path, 
             additional_prompt=conversation_style_prompt,
@@ -1049,10 +1029,8 @@ async def convert_pdf_to_slides(job_id: str, pdf_path: str, target_duration: int
         )
         
         job.status = "slides_ready"
-        job.status_ja = localization_service.get_status_message("slides_ready")
+        job.status_code = StatusCode.COMPLETED
         job.progress = 100
-        job.message = f"スライド変換と対話生成が完了しました（{slide_count}枚）"
-        job.message_ja = localization_service.get_progress_message(f"スライド変換と対話生成が完了しました（{slide_count}枚）")
         job.updated_at = datetime.now()
         
     except Exception as e:
@@ -1061,9 +1039,8 @@ async def convert_pdf_to_slides(job_id: str, pdf_path: str, target_duration: int
         print(f"Error in convert_pdf_to_slides: {error_msg}")
         job = jobs_db[job_id]
         job.status = "failed"
-        job.status_ja = localization_service.get_status_message("failed")
-        job.error = str(e)
-        job.error_ja = localization_service.get_error_message(str(e))
+        job.status_code = StatusCode.FAILED
+        job.error_code = StatusCode.PDF_PROCESSING_ERROR
         job.updated_at = datetime.now()
 
 async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] = None, is_regeneration: bool = False):
@@ -1083,13 +1060,11 @@ async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] =
         processor = PDFProcessor(job_id, Path.cwd())
         
         # 対話データ生成（追加プロンプトがあれば渡す）
-        job.message = "対話スクリプトを生成中..."
         job.progress = 50
         job.updated_at = datetime.now()
         
         # 進捗更新用のコールバック
         def update_progress(message: str, progress: float):
-            job.message = message
             # 再生成の場合は0-95%の範囲で進捗表示
             job.progress = int(progress * 0.95)
             job.updated_at = datetime.now()
@@ -1197,18 +1172,15 @@ async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] =
         
         # 完了
         job.status = "dialogue_ready"
-        job.status_ja = localization_service.get_status_message("dialogue_ready")
+        job.status_code = StatusCode.COMPLETED
         job.progress = 100
-        job.message = "対話スクリプトが生成されました"
-        job.message_ja = localization_service.get_progress_message("対話スクリプトが生成されました")
         job.updated_at = datetime.now()
         
     except Exception as e:
         job = jobs_db[job_id]
         job.status = "failed"
-        job.status_ja = localization_service.get_status_message("failed")
-        job.error = str(e)
-        job.error_ja = localization_service.get_error_message(str(e))
+        job.status_code = StatusCode.FAILED
+        job.error_code = StatusCode.DIALOGUE_GENERATION_ERROR
         job.updated_at = datetime.now()
 
 async def generate_complete_video(job_id: str):
@@ -1219,7 +1191,6 @@ async def generate_complete_video(job_id: str):
         # 1. PDFをスライドに変換（必要な場合のみ）
         slides_dir = Path.cwd() / "slides" / job_id
         if not slides_dir.exists() or not list(slides_dir.glob("slide_*.png")):
-            job.message = "PDFをスライドに変換中..."
             job.progress = 20
             job.updated_at = datetime.now()
             
@@ -1236,7 +1207,6 @@ async def generate_complete_video(job_id: str):
             slide_count = processor.convert_pdf_to_slides(pdf_path)
         else:
             # 既存のスライドを使用
-            job.message = "既存のスライドを使用中..."
             job.progress = 20
             job.updated_at = datetime.now()
             slide_count = len(list(slides_dir.glob("slide_*.png")))
@@ -1248,26 +1218,22 @@ async def generate_complete_video(job_id: str):
         
         # 既に対話データが存在するかチェック
         if not dialogue_path.exists():
-            job.message = "対話スクリプトを生成中..."
             job.progress = 40
             job.updated_at = datetime.now()
             
             # 進捗更新用のコールバック
             def update_progress(message: str, progress: float):
-                job.message = message
                 job.progress = 40 + int(progress * 0.2)  # 40-60%の範囲で進捗表示
                 job.updated_at = datetime.now()
             
             dialogue_path = processor.generate_dialogue_from_pdf(pdf_path, progress_callback=update_progress)
         else:
             # 既存の対話データを使用
-            job.message = "既存の対話スクリプトを使用中..."
             job.progress = 60
             job.updated_at = datetime.now()
             print(f"既存の対話データを使用: {dialogue_path}")
         
         # 3. 音声生成
-        job.message = "音声を生成中..."
         job.progress = 60
         job.updated_at = datetime.now()
         
@@ -1280,7 +1246,6 @@ async def generate_complete_video(job_id: str):
         )
         
         # 4. 動画作成
-        job.message = "動画を作成中..."
         job.progress = 80
         job.updated_at = datetime.now()
         
@@ -1289,19 +1254,16 @@ async def generate_complete_video(job_id: str):
         
         # 5. 完了
         job.status = "completed"
-        job.status_ja = localization_service.get_status_message("completed")
+        job.status_code = StatusCode.COMPLETED
         job.progress = 100
-        job.message = "動画生成が完了しました"
-        job.message_ja = localization_service.get_progress_message("動画生成が完了しました")
         job.result_url = f"/api/jobs/{job_id}/download"
         job.updated_at = datetime.now()
         
     except Exception as e:
         job = jobs_db[job_id]
         job.status = "failed"
-        job.status_ja = localization_service.get_status_message("failed")
-        job.error = str(e)
-        job.error_ja = localization_service.get_error_message(str(e))
+        job.status_code = StatusCode.FAILED
+        job.error_code = StatusCode.VIDEO_CREATION_ERROR
         job.updated_at = datetime.now()
 
 async def generate_audio_task(
@@ -1314,7 +1276,6 @@ async def generate_audio_task(
     """音声を生成"""
     try:
         job = jobs_db[job_id]
-        job.message = "音声を生成中..."
         job.progress = 40
         
         # 音声生成
@@ -1327,23 +1288,21 @@ async def generate_audio_task(
         )
         
         job.status = "audio_ready"
+        job.status_code = StatusCode.COMPLETED
         job.progress = 60
-        job.message = f"音声生成が完了しました（{audio_count}ファイル）"
         job.updated_at = datetime.now()
         
     except Exception as e:
         job = jobs_db[job_id]
         job.status = "failed"
-        job.status_ja = localization_service.get_status_message("failed")
-        job.error = str(e)
-        job.error_ja = localization_service.get_error_message(str(e))
+        job.status_code = StatusCode.FAILED
+        job.error_code = StatusCode.AUDIO_GENERATION_ERROR
         job.updated_at = datetime.now()
 
 async def create_video_task(job_id: str, slide_numbers: Optional[List[int]]):
     """動画を作成"""
     try:
         job = jobs_db[job_id]
-        job.message = "動画を作成中..."
         job.progress = 80
         
         # 動画作成
@@ -1351,19 +1310,16 @@ async def create_video_task(job_id: str, slide_numbers: Optional[List[int]]):
         video_path = creator.create_video(slide_numbers)
         
         job.status = "completed"
-        job.status_ja = localization_service.get_status_message("completed")
+        job.status_code = StatusCode.COMPLETED
         job.progress = 100
-        job.message = "動画作成が完了しました"
-        job.message_ja = localization_service.get_progress_message("動画作成が完了しました")
         job.result_url = f"/api/jobs/{job_id}/download"
         job.updated_at = datetime.now()
         
     except Exception as e:
         job = jobs_db[job_id]
         job.status = "failed"
-        job.status_ja = localization_service.get_status_message("failed")
-        job.error = str(e)
-        job.error_ja = localization_service.get_error_message(str(e))
+        job.status_code = StatusCode.FAILED
+        job.error_code = StatusCode.VIDEO_CREATION_ERROR
         job.updated_at = datetime.now()
 
 # 動画時間の概算関数

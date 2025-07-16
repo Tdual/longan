@@ -5,7 +5,6 @@ from typing import List, Dict, Optional
 from pathlib import Path
 from dotenv import load_dotenv
 import asyncio
-from .localization import localization_service
 
 # 環境変数を読み込み
 load_dotenv()
