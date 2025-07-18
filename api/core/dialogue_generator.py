@@ -212,7 +212,7 @@ JSON形式で各スライドの重要度係数を返してください。
         
         return base_importance
     
-    async def extract_text_from_slides(self, slide_texts: List[str], additional_prompt: str = None, progress_callback=None, target_duration: int = 10, speaker_info: dict = None) -> Dict[str, List[Dict]]:
+    async def extract_text_from_slides(self, slide_texts: List[str], additional_prompt: str = None, progress_callback=None, target_duration: int = 10, speaker_info: dict = None, additional_knowledge: str = None) -> Dict[str, List[Dict]]:
         """スライドのテキストから対話形式のナレーションを生成（スライドごとに個別生成）"""
         
         dialogue_data = {}
@@ -279,13 +279,14 @@ JSON形式で各スライドの重要度係数を返してください。
                 previous_dialogues=previous_dialogues,
                 additional_prompt=combined_additional_prompt,
                 target_seconds_per_slide=allocated_seconds,
-                speaker_info=speaker_info
+                speaker_info=speaker_info,
+                additional_knowledge=additional_knowledge
             )
             dialogue_data[slide_key] = slide_dialogue
         
         return dialogue_data
     
-    async def regenerate_specific_slides(self, slide_texts: List[str], existing_dialogues: Dict[str, List[Dict]], slide_numbers: List[int], additional_prompt: str = None, progress_callback=None, instruction_history=None, target_duration: int = 10, speaker_info: dict = None) -> Dict[str, List[Dict]]:
+    async def regenerate_specific_slides(self, slide_texts: List[str], existing_dialogues: Dict[str, List[Dict]], slide_numbers: List[int], additional_prompt: str = None, progress_callback=None, instruction_history=None, target_duration: int = 10, speaker_info: dict = None, additional_knowledge: str = None) -> Dict[str, List[Dict]]:
         """特定のスライドのみ再生成"""
         
         # 既存の対話データをコピー
@@ -360,13 +361,14 @@ JSON形式で各スライドの重要度係数を返してください。
                 previous_dialogues=previous_dialogues,
                 additional_prompt=combined_prompt,
                 target_seconds_per_slide=allocated_seconds,
-                speaker_info=speaker_info
+                speaker_info=speaker_info,
+                additional_knowledge=additional_knowledge
             )
             dialogue_data[slide_key] = slide_dialogue
         
         return dialogue_data
     
-    async def generate_dialogue_for_single_slide(self, slide_number: int, slide_text: str, total_slides: int, previous_dialogues: Dict = None, additional_prompt: str = None, target_seconds_per_slide: float = 30, max_retries: int = 3, speaker_info: dict = None) -> List[Dict]:
+    async def generate_dialogue_for_single_slide(self, slide_number: int, slide_text: str, total_slides: int, previous_dialogues: Dict = None, additional_prompt: str = None, target_seconds_per_slide: float = 30, max_retries: int = 3, speaker_info: dict = None, additional_knowledge: str = None) -> List[Dict]:
         """単一スライドの対話を生成"""
         
         # スライドの種類を早めに判定（表紙・表題スライドかどうか）
@@ -654,6 +656,10 @@ speakerは必ず"speaker1"か"speaker2"を使用してください。
 - 前のトピックから自然に話を続けてください
 - いきなり本題から入って構いません'''.format(slide_number))
         )
+        
+        # 追加ナレッジがある場合は補助情報として付加
+        if additional_knowledge:
+            user_prompt += "\n\n【補助ナレッジ】以下の情報を参考にすることができますが、あくまでもスライドの内容が主体です。スライドに書かれていない内容については話さないでください：\n{}".format(additional_knowledge)
         
         # 追加プロンプトがある場合は付加
         if additional_prompt:

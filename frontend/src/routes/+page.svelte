@@ -65,6 +65,8 @@
   let hasAnyApiKey = false; // いずれかのAPIキーが設定されているか
   let isAuthenticated = false; // 認証状態
   let authEnabled = false; // 認証が有効かどうか
+  let knowledgeExpanded = false; // ナレッジ入力欄の展開状態
+  let knowledgeFile: File | null = null; // ナレッジファイル
 
   // ステータス表示用のヘルパー関数
   function getDisplayStatus(job: Job): string {
@@ -314,6 +316,13 @@
     }
   }
 
+  async function handleKnowledgeFileSelect(event: Event) {
+    const target = event.target as HTMLInputElement;
+    if (target.files && target.files[0]) {
+      knowledgeFile = target.files[0];
+    }
+  }
+
   async function handleDrop(event: DragEvent) {
     event.preventDefault();
     dragover = false;
@@ -362,6 +371,11 @@
         "conversation_style_prompt",
         selectedStyle ? selectedStyle.prompt : ""
       );
+      
+      // ナレッジファイルを追加
+      if (knowledgeFile) {
+        formData.append("knowledge_file", knowledgeFile);
+      }
 
       const response = await fetch("/api/jobs/upload", {
         method: "POST",
@@ -1026,6 +1040,64 @@
                   step="0.1"
                   class="speed-slider"
                 />
+              </div>
+            {/if}
+          </div>
+
+          <div class="knowledge-section">
+            <button
+              class="knowledge-toggle"
+              on:click={() => (knowledgeExpanded = !knowledgeExpanded)}
+              type="button"
+            >
+              <span class="toggle-icon">{knowledgeExpanded ? '▼' : '▶'}</span>
+              📚 補助ナレッジを追加（オプション）
+            </button>
+            
+            {#if knowledgeExpanded}
+              <div class="knowledge-content">
+                <p class="knowledge-description">
+                  スライドに記載されていない補足情報を含むファイルをアップロードできます。
+                  AIはこの情報を参考にしますが、あくまでも<strong>スライドの内容が主体</strong>となり、
+                  スライドに書かれていない内容については話しません。
+                </p>
+                <p class="knowledge-supported-formats">
+                  <strong>対応ファイル形式:</strong> .pdf, .docx, .pptx, .md, .txt, .rtf, .odt, .csv
+                </p>
+                <div class="knowledge-upload-area">
+                  {#if !knowledgeFile}
+                    <div class="knowledge-dropzone">
+                      <div class="knowledge-upload-icon">📄</div>
+                      <p>ナレッジファイルをアップロード</p>
+                      <input
+                        type="file"
+                        accept=".pdf,.docx,.pptx,.md,.txt,.rtf,.odt,.csv"
+                        on:change={handleKnowledgeFileSelect}
+                        class="knowledge-file-input"
+                        id="knowledge-file-input"
+                      />
+                      <label for="knowledge-file-input" class="knowledge-file-label">
+                        ファイルを選択
+                      </label>
+                    </div>
+                  {:else}
+                    <div class="knowledge-file-info">
+                      <div class="knowledge-file-name">
+                        📄 {knowledgeFile.name}
+                      </div>
+                      <div class="knowledge-file-size">
+                        ({(knowledgeFile.size / 1024).toFixed(1)} KB)
+                      </div>
+                      <button
+                        class="knowledge-remove-btn"
+                        on:click={() => knowledgeFile = null}
+                        type="button"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  {/if}
+                </div>
               </div>
             {/if}
           </div>
@@ -2519,5 +2591,155 @@
 
   .back-to-dialogue-btn:hover {
     background-color: #2563eb;
+  }
+
+  /* ナレッジセクションのスタイル */
+  .knowledge-section {
+    margin: 1.5rem 0;
+    padding: 1rem;
+    background-color: #f9fafb;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+  }
+
+  .knowledge-toggle {
+    background-color: transparent;
+    border: none;
+    padding: 0.5rem;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 500;
+    color: #374151;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: color 0.2s ease;
+    width: 100%;
+    text-align: left;
+  }
+
+  .knowledge-toggle:hover {
+    color: #1f2937;
+  }
+
+  .toggle-icon {
+    font-size: 0.75rem;
+    transition: transform 0.2s ease;
+  }
+
+  .knowledge-content {
+    margin-top: 1rem;
+    animation: slideDown 0.3s ease-out;
+  }
+
+  @keyframes slideDown {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .knowledge-description {
+    font-size: 0.875rem;
+    color: #6b7280;
+    margin-bottom: 1rem;
+    line-height: 1.5;
+  }
+
+  .knowledge-description strong {
+    color: #374151;
+    font-weight: 600;
+  }
+
+  .knowledge-supported-formats {
+    font-size: 0.85rem;
+    color: #4b5563;
+    margin-bottom: 1rem;
+    padding: 0.5rem;
+    background-color: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+  }
+
+  .knowledge-upload-area {
+    margin-top: 1rem;
+  }
+
+  .knowledge-dropzone {
+    border: 2px dashed #d1d5db;
+    border-radius: 8px;
+    padding: 2rem;
+    text-align: center;
+    background-color: #f9fafb;
+    transition: all 0.3s ease;
+  }
+
+  .knowledge-dropzone:hover {
+    border-color: #3b82f6;
+    background-color: #f0f9ff;
+  }
+
+  .knowledge-upload-icon {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .knowledge-file-input {
+    display: none;
+  }
+
+  .knowledge-file-label {
+    display: inline-block;
+    background-color: #3b82f6;
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    margin-top: 0.5rem;
+  }
+
+  .knowledge-file-label:hover {
+    background-color: #2563eb;
+  }
+
+  .knowledge-file-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background-color: #f0f9ff;
+    border: 1px solid #3b82f6;
+    border-radius: 6px;
+  }
+
+  .knowledge-file-name {
+    font-weight: 500;
+    color: #1e40af;
+    flex: 1;
+  }
+
+  .knowledge-file-size {
+    font-size: 0.85rem;
+    color: #6b7280;
+  }
+
+  .knowledge-remove-btn {
+    background-color: #ef4444;
+    color: white;
+    border: none;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: background-color 0.3s ease;
+  }
+
+  .knowledge-remove-btn:hover {
+    background-color: #dc2626;
   }
 </style>

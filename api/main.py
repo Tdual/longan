@@ -129,7 +129,8 @@ async def upload_pdf(
     speaker2_name: str = Form("ずんだもん"),
     speaker2_speed: float = Form(1.0),
     conversation_style: str = Form("friendly"),
-    conversation_style_prompt: str = Form("")
+    conversation_style_prompt: str = Form(""),
+    knowledge_file: UploadFile = File(None)  # ナレッジファイル
 ):
     """PDFファイルをアップロードしてジョブを作成"""
     
@@ -147,6 +148,21 @@ async def upload_pdf(
     pdf_path = job_dir / file.filename
     with open(pdf_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
+    
+    # ナレッジファイルの処理
+    knowledge_text = ""
+    if knowledge_file and knowledge_file.filename:
+        # ナレッジファイルを保存
+        knowledge_path = job_dir / knowledge_file.filename
+        with open(knowledge_path, "wb") as buffer:
+            shutil.copyfileobj(knowledge_file.file, buffer)
+        
+        # ナレッジファイルからテキストを抽出
+        try:
+            knowledge_text = extract_text_from_knowledge_file(str(knowledge_path))
+        except Exception as e:
+            print(f"ナレッジファイルの処理エラー: {e}")
+            knowledge_text = ""
     
     # ジョブ情報を保存
     job_status = JobStatus(
@@ -166,7 +182,8 @@ async def upload_pdf(
         "speaker1": {"id": speaker1_id, "name": speaker1_name, "speed": speaker1_speed},
         "speaker2": {"id": speaker2_id, "name": speaker2_name, "speed": speaker2_speed},
         "conversation_style": conversation_style,
-        "conversation_style_prompt": conversation_style_prompt
+        "conversation_style_prompt": conversation_style_prompt,
+        "additional_knowledge": knowledge_text
     }
     metadata_file = job_dir / "metadata.json"
     with open(metadata_file, "w", encoding="utf-8") as f:
@@ -988,6 +1005,7 @@ from api.core.video_creator import VideoCreator
 from api.core.settings_manager import SettingsManager
 from api.core.llm_provider import LLMFactory, LLMProvider
 from api.core.auth import auth_manager, require_auth
+from api.core.knowledge_extractor import extract_text_from_knowledge_file
 
 # バックグラウンドタスク（本番ではAWS Batchで実行）
 async def convert_pdf_to_slides(job_id: str, pdf_path: str, target_duration: int = 10, metadata: dict = None):
@@ -1010,24 +1028,36 @@ async def convert_pdf_to_slides(job_id: str, pdf_path: str, target_duration: int
             job.progress = 15 + int(progress * 0.8)  # 15-95%の範囲で進捗表示
             job.updated_at = datetime.now()
         
-        # メタデータがある場合はスピーカー情報と会話スタイルを取得
+        # メタデータがある場合はスピーカー情報と会話スタイル、ナレッジを取得
         speaker_info = None
         conversation_style_prompt = None
+        additional_knowledge = None
         if metadata:
             speaker_info = {
                 'speaker1': metadata.get('speaker1'),
                 'speaker2': metadata.get('speaker2')
             }
             conversation_style_prompt = metadata.get('conversation_style_prompt', '')
+            additional_knowledge = metadata.get('additional_knowledge', '')
+        
+        # プロンプトを結合（会話スタイル + ナレッジ）
+        combined_prompt = conversation_style_prompt
+        if additional_knowledge:
+            # 会話スタイルとナレッジがある場合は結合
+            if combined_prompt:
+                combined_prompt = f"{combined_prompt}\n\n{additional_knowledge}"
+            else:
+                combined_prompt = additional_knowledge
         
         # 対話データを生成（目安時間とスピーカー情報、会話スタイルを渡す）
         job.status_code = StatusCode.DIALOGUE_GENERATING
         dialogue_path = await processor.generate_dialogue_from_pdf(
             pdf_path, 
-            additional_prompt=conversation_style_prompt,
+            additional_prompt=combined_prompt,
             progress_callback=update_progress, 
             target_duration=target_duration,
-            speaker_info=speaker_info
+            speaker_info=speaker_info,
+            additional_knowledge=additional_knowledge
         )
         
         job.status = "slides_ready"
@@ -1075,6 +1105,7 @@ async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] =
         metadata = None
         speaker_info = None
         target_duration = 10  # デフォルト
+        additional_knowledge = None
         
         metadata_file = job_dir / "metadata.json"
         if metadata_file.exists():
@@ -1085,6 +1116,7 @@ async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] =
                     'speaker1': metadata.get('speaker1'),
                     'speaker2': metadata.get('speaker2')
                 }
+                additional_knowledge = metadata.get('additional_knowledge', '')
         else:
             # 互換性のため古い形式も確認
             target_duration_file = job_dir / "target_duration.txt"
@@ -1129,7 +1161,8 @@ async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] =
                 progress_callback=update_progress,
                 instruction_history=history,
                 target_duration=target_duration,
-                speaker_info=speaker_info
+                speaker_info=speaker_info,
+                additional_knowledge=additional_knowledge
             )
             
             # データを保存
@@ -1158,12 +1191,13 @@ async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] =
             else:
                 full_prompt = conversation_style_prompt
             
-            dialogue_path = processor.generate_dialogue_from_pdf(
+            dialogue_path = await processor.generate_dialogue_from_pdf(
                 pdf_path, 
                 additional_prompt=full_prompt,
                 progress_callback=update_progress,
                 target_duration=target_duration,
-                speaker_info=speaker_info
+                speaker_info=speaker_info,
+                additional_knowledge=additional_knowledge
             )
             
             # 推定時間を計算して保存
@@ -1315,6 +1349,9 @@ async def generate_complete_video(job_id: str):
         job.updated_at = datetime.now()
         
     except Exception as e:
+        import traceback
+        error_msg = f"Error in generate_complete_video: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)  # コンソールにエラーを出力
         job = jobs_db[job_id]
         job.status = "failed"
         job.status_code = StatusCode.FAILED
@@ -1371,6 +1408,9 @@ async def create_video_task(job_id: str, slide_numbers: Optional[List[int]]):
         job.updated_at = datetime.now()
         
     except Exception as e:
+        import traceback
+        error_msg = f"Error in generate_complete_video: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)  # コンソールにエラーを出力
         job = jobs_db[job_id]
         job.status = "failed"
         job.status_code = StatusCode.FAILED
@@ -1410,6 +1450,30 @@ def format_duration(seconds: float) -> str:
     minutes = int(seconds // 60)
     remaining_seconds = int(seconds % 60)
     return f"{minutes}分{remaining_seconds}秒"
+
+@app.post("/api/jobs/{job_id}/generate-video")
+async def generate_video_directly(job_id: str, background_tasks: BackgroundTasks):
+    """スライド準備完了後、動画生成を直接実行"""
+    if job_id not in jobs_db:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    job = jobs_db[job_id]
+    
+    # ジョブが適切な状態であることを確認
+    if job.status not in ["slides_ready", "audio_ready"]:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Job must be in 'slides_ready' or 'audio_ready' state. Current: {job.status}"
+        )
+    
+    # 動画生成タスクを開始
+    job.status = "processing"
+    job.status_code = StatusCode.VIDEO_CREATING
+    job.updated_at = datetime.now()
+    
+    background_tasks.add_task(generate_complete_video, job_id)
+    
+    return {"message": "Video generation started", "job_id": job_id}
 
 if __name__ == "__main__":
     import uvicorn

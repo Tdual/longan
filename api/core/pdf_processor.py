@@ -26,7 +26,7 @@ class PDFProcessor:
         slide_paths = converter.convert_pdf_to_images(pdf_path)
         return len(slide_paths)
     
-    async def generate_dialogue_from_pdf(self, pdf_path: str, additional_prompt: str = None, progress_callback=None, target_duration: int = 10, speaker_info: dict = None) -> str:
+    async def generate_dialogue_from_pdf(self, pdf_path: str, additional_prompt: str = None, progress_callback=None, target_duration: int = 10, speaker_info: dict = None, additional_knowledge: str = None) -> str:
         """PDFから対話データを生成"""
         # 1. PDFからテキストを抽出
         text_extractor = TextExtractor()
@@ -39,7 +39,8 @@ class PDFProcessor:
             additional_prompt,
             progress_callback,
             target_duration,
-            speaker_info
+            speaker_info,
+            additional_knowledge
         )
         
         # 3. 全体調整とカタカナ変換を自動実行
