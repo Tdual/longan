@@ -120,7 +120,7 @@ bug_report_and_recommendations.md
 get_voicevox_speakers.py
 
 # Landing page (contains deployment credentials and temporary files)
-landing_page/
+# landing_page/
 
 # AWS configuration files (contain sensitive information)
 acm-validation-records.json

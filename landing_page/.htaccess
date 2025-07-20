@@ -1,0 +1,16 @@
+# HTTPSへのリダイレクト
+RewriteEngine On
+RewriteCond %{HTTPS} off
+RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
+
+# wwwなしへの統一
+RewriteCond %{HTTP_HOST} ^www\.longan-ai\.com$ [NC]
+RewriteRule ^(.*)$ https://longan-ai.com/$1 [R=301,L]
+
+# カスタム404エラーページ
+ErrorDocument 404 /error.html
+
+# セキュリティヘッダー
+Header set X-Frame-Options "SAMEORIGIN"
+Header set X-Content-Type-Options "nosniff"
+Header set X-XSS-Protection "1; mode=block"

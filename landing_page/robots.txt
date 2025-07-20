@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Sitemap: https://longan-ai.com/sitemap.xml
+
+# Disallow unnecessary files
+Disallow: /error.html
+
+# Crawl-delay for respectful crawling
+Crawl-delay: 1

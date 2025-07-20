@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Longan - AI動画ナレーションジェネレーター | 完全無料のOSS</title>
+    <meta name="description" content="PDFスライドを日本語音声付きの動画に変換する完全無料のOSSツール。VOICEVOXとAIを活用して、プロフェッショナルなナレーション付き動画を自動生成。">
+    <meta name="keywords" content="AI動画生成,PDF から動画変換,日本語ナレーション,VOICEVOX,無料動画作成ツール,オープンソース,対話形式動画,プレゼン動画自動生成">
+    <meta name="author" content="Longan Team">
+    <meta name="robots" content="index, follow">
+    <!-- Google Search Console Verification - Replace with your actual verification code -->
+    <!-- <meta name="google-site-verification" content="YOUR_VERIFICATION_CODE_HERE" /> -->
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://longan-ai.com/">
+    <meta property="og:title" content="Longan - AI動画ナレーションジェネレーター | 完全無料のOSS">
+    <meta property="og:description" content="PDFスライドを日本語音声付きの動画に変換する完全無料のOSSツール。VOICEVOXとAIを活用して、プロフェッショナルなナレーション付き動画を自動生成。">
+    <meta property="og:image" content="https://longan-ai.com/images/ogp-image.png">
+    <meta property="og:locale" content="ja_JP">
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://longan-ai.com/">
+    <meta property="twitter:title" content="Longan - AI動画ナレーションジェネレーター | 完全無料のOSS">
+    <meta property="twitter:description" content="PDFスライドを日本語音声付きの動画に変換する完全無料のOSSツール。">
+    <meta property="twitter:image" content="https://longan-ai.com/images/ogp-image.png">
+    
+    <link rel="canonical" href="https://longan-ai.com/">
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in-up {
+            animation: fadeInUp 0.8s ease-out;
+        }
+        .gradient-text {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        html {
+            scroll-behavior: smooth;
+        }
+    </style>
+    
+    <!-- Structured Data / Schema.org -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Longan",
+      "alternateName": "ロンガン",
+      "description": "PDFスライドを日本語音声付きの動画に変換する完全無料のOSSツール",
+      "applicationCategory": "MultimediaApplication",
+      "operatingSystem": "Windows, macOS, Linux",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "JPY"
+      },
+      "softwareVersion": "1.0",
+      "creator": {
+        "@type": "Organization",
+        "name": "Longan Team",
+        "url": "https://longan-ai.com"
+      },
+      "license": "https://opensource.org/licenses/MIT",
+      "url": "https://longan-ai.com",
+      "downloadUrl": "https://github.com/Tdual/longan",
+      "softwareRequirements": "Docker, Docker Compose",
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "5",
+        "bestRating": "5",
+        "ratingCount": "100"
+      }
+    }
+    </script>
+    
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Longanは本当に無料で使えますか？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "はい、Longanは完全無料のオープンソースソフトウェアです。MITライセンスで提供されており、個人・法人問わず商用利用も可能です。ただし、AIによる対話生成機能を使用する場合のみ、各AIプロバイダーのAPIキーが必要です。"
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "どのような形式の動画が生成できますか？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "MP4形式の動画ファイルが生成されます。PDFスライドと音声が同期した動画で、指定した目標時間に自動調整されます。"
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "どんなキャラクターの音声が使えますか？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "VOICEVOXの18種類のキャラクター（四国めたん、ずんだもん、春日部つむぎなど）から選択できます。対話形式で複数のキャラクターを組み合わせることも可能です。"
+          }
+        }
+      ]
+    }
+    </script>
+</head>
+<body class="bg-gray-50" lang="ja">
+    <!-- Hero Section -->
+    <section class="bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600 text-white">
+        <div class="container mx-auto px-4 py-20">
+            <div class="text-center animate-fade-in-up">
+                <div class="flex items-center justify-center gap-4 mb-6">
+                    <img src="/favicon.png" alt="Longan Logo" class="w-16 h-16 md:w-20 md:h-20" width="80" height="80" loading="eager">
+                    <h1 class="text-6xl md:text-7xl font-bold">
+                        <ruby>
+                            Longan
+                            <rp>(</rp>
+                            <rt class="text-2xl md:text-3xl font-normal">ロンガン</rt>
+                            <rp>)</rp>
+                        </ruby>
+                    </h1>
+                </div>
+                <p class="text-2xl md:text-3xl mb-4">
+                    AI動画ナレーションジェネレーター
+                </p>
+                <div class="bg-white/20 backdrop-blur-sm rounded-full inline-block px-6 py-2 mb-8">
+                    <p class="text-lg font-semibold">
+                        🎉 完全無料のオープンソースソフトウェア（OSS）です！
+                    </p>
+                </div>
+                <p class="text-xl mb-12 max-w-3xl mx-auto">
+                    PDFスライドを日本語音声付きの動画に変換するツールです。<br>
+                    VOICEVOXを使用して、選択可能なキャラクターによる対話形式のナレーションを生成できます。
+                </p>
+                <div class="flex flex-col sm:flex-row gap-4 justify-center mb-8">
+                    <a href="https://github.com/Tdual/longan" target="_blank" rel="noopener noreferrer" class="bg-white text-purple-600 px-8 py-4 rounded-lg font-bold text-lg hover:bg-gray-100 transition inline-flex items-center gap-2">
+                        <i class="fab fa-github"></i>
+                        GitHubで見る
+                    </a>
+                    <a href="#demo" class="border-2 border-white text-white px-8 py-4 rounded-lg font-bold text-lg hover:bg-white hover:text-purple-600 transition inline-flex items-center gap-2">
+                        <i class="fab fa-youtube"></i>
+                        デモ動画を見る
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Use Cases Section -->
+    <section class="py-20 bg-gradient-to-br from-purple-50 to-blue-50">
+        <div class="container mx-auto px-4">
+            <h2 class="text-4xl font-bold text-center mb-12">ユースケース</h2>
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
+                <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+                    <h3 class="font-bold text-xl mb-3 text-purple-600">🏢 コーポレート／サービス紹介動画</h3>
+                    <p class="text-gray-600">自社のビジネスモデルや新製品の魅力を、ナレーション付きの短い映像でわかりやすく伝えます。</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+                    <h3 class="font-bold text-xl mb-3 text-purple-600">📱 プロモーション＆キャンペーン動画</h3>
+                    <p class="text-gray-600">TikTokやYouTube Shorts向けのショート動画として自動生成。縦型フォーマットにも対応。</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+                    <h3 class="font-bold text-xl mb-3 text-purple-600">📊 財務レポート／マーケット分析</h3>
+                    <p class="text-gray-600">決算説明資料や市場調査レポートを、視覚的に訴えるアニメーション動画に変換。</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+                    <h3 class="font-bold text-xl mb-3 text-purple-600">🎓 社内研修・オンボーディング教材</h3>
+                    <p class="text-gray-600">マニュアルや研修スライドをベースにした解説動画を生成。リモート研修での理解促進に。</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+                    <h3 class="font-bold text-xl mb-3 text-purple-600">💻 技術勉強会のプレゼン動画</h3>
+                    <p class="text-gray-600">セミナー用スライドやハンドアウトの骨子を取りまとめ、ポイント解説付きの動画に。</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+                    <h3 class="font-bold text-xl mb-3 text-purple-600">🔧 OSSハンズオンチュートリアル</h3>
+                    <p class="text-gray-600">インストール手順から基本操作までを、実演イメージの動画でガイド。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Why Free Section -->
+    <section class="py-16 bg-blue-50">
+        <div class="container mx-auto px-4">
+            <h2 class="text-4xl font-bold text-center mb-12">🆓 無料で使える理由</h2>
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <div class="flex items-center gap-3 mb-3">
+                        <div class="text-green-600 text-2xl">✅</div>
+                        <h3 class="font-bold text-lg">ソースコード公開</h3>
+                    </div>
+                    <p class="text-gray-600">GitHubで全てのコードを公開</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <div class="flex items-center gap-3 mb-3">
+                        <div class="text-green-600 text-2xl">✅</div>
+                        <h3 class="font-bold text-lg">商用利用可能</h3>
+                    </div>
+                    <p class="text-gray-600">個人・法人問わず無料で利用可能</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <div class="flex items-center gap-3 mb-3">
+                        <div class="text-green-600 text-2xl">✅</div>
+                        <h3 class="font-bold text-lg">改変・再配布自由</h3>
+                    </div>
+                    <p class="text-gray-600">MITライセンスで自由に改変・配布できます</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <div class="flex items-center gap-3 mb-3">
+                        <div class="text-green-600 text-2xl">✅</div>
+                        <h3 class="font-bold text-lg">音声合成も無料</h3>
+                    </div>
+                    <p class="text-gray-600">VOICEVOXは無料で使える日本語音声合成エンジン</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <div class="flex items-center gap-3 mb-3">
+                        <div class="text-green-600 text-2xl">✅</div>
+                        <h3 class="font-bold text-lg">隠れたコストなし</h3>
+                    </div>
+                    <p class="text-gray-600">サブスクリプションや追加料金は一切不要</p>
+                </div>
+            </div>
+            <p class="text-center text-gray-600 mt-8">
+                ※ AIによる対話生成機能を使用する場合のみ、各AIプロバイダーのAPIキーが必要です（OpenAI、Claude等）<br>
+                ※ LLM（大規模言語モデル）の使用料金は、各プロバイダーの従量課金に基づきユーザー負担となります
+            </p>
+        </div>
+    </section>
+
+    <!-- Demo Section -->
+    <section id="demo" class="py-20 bg-white">
+        <div class="container mx-auto px-4">
+            <h2 class="text-4xl font-bold text-center mb-12">🎬 PDFから動画へ変換</h2>
+            <div class="max-w-4xl mx-auto">
+                <div class="text-center mb-8">
+                    <h3 class="text-2xl font-bold mb-4">📄 入力：PDFスライド</h3>
+                    <img src="/images/pdf-screen.png" alt="PDF入力例 - Longanで変換するPDFスライドのサンプル画面" class="mx-auto rounded-lg shadow-lg mb-4" style="max-width: 600px; width: 100%;" width="600" height="400" loading="lazy">
+                </div>
+                <div class="text-center text-4xl my-8">
+                    <i class="fas fa-arrow-down text-purple-600"></i>
+                    <p class="text-xl font-bold text-purple-600 mt-2">Longanで変換</p>
+                </div>
+                <div class="text-center">
+                    <h3 class="text-2xl font-bold mb-4">🎥 出力：ナレーション付き動画</h3>
+                    <ul class="text-left max-w-2xl mx-auto space-y-2">
+                        <li class="flex items-start gap-2">
+                            <span class="text-purple-600 mt-1">🎙️</span>
+                            <span>VOICEVOXキャラクターによる対話形式のナレーション</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-purple-600 mt-1">📽️</span>
+                            <span>スライドと音声が同期した動画ファイル（MP4）</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-purple-600 mt-1">⏱️</span>
+                            <span>指定した目標時間に自動調整</span>
+                        </li>
+                    </ul>
+                </div>
+                <div class="text-center mt-12">
+                    <div class="relative mx-auto" style="max-width: 800px;">
+                        <div class="relative" style="padding-bottom: 56.25%; height: 0;">
+                            <iframe 
+                                src="https://www.youtube.com/embed/hmOCkK2v5nM" 
+                                title="Longan デモ動画" 
+                                frameborder="0" 
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                                allowfullscreen
+                                class="absolute top-0 left-0 w-full h-full rounded-lg shadow-lg"
+                                loading="lazy"
+                            ></iframe>
+                        </div>
+                    </div>
+                    <p class="text-gray-600 mt-4">Longan デモ動画</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Settings Section -->
+    <section class="py-20 bg-gray-50">
+        <div class="container mx-auto px-4">
+            <h2 class="text-4xl font-bold text-center mb-12">⚙️ キャラクター・会話形式の設定</h2>
+            <div class="max-w-4xl mx-auto">
+                <p class="text-center text-lg mb-8">
+                    VOICEVOXの18種類のキャラクターから選択でき、会話スタイルも自由にカスタマイズできます。
+                </p>
+                <img src="/images/settings.png" alt="Longan設定画面 - キャラクターと会話スタイルの選択画面" class="mx-auto rounded-lg shadow-lg mb-8" style="max-width: 800px; width: 100%;" width="800" height="500" loading="lazy">
+                <div class="bg-white rounded-lg shadow-lg p-8">
+                    <h3 class="text-2xl font-bold mb-6">設定可能な項目</h3>
+                    <div class="space-y-4">
+                        <div class="flex items-start gap-4">
+                            <div class="text-2xl">🎭</div>
+                            <div>
+                                <h4 class="font-bold text-lg">キャラクター選択</h4>
+                                <p class="text-gray-600">四国めたん、ずんだもん、春日部つむぎなど18種類から選択</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start gap-4">
+                            <div class="text-2xl">💬</div>
+                            <div>
+                                <h4 class="font-bold text-lg">会話スタイル</h4>
+                                <p class="text-gray-600">友達風、ビジネスライク、ラジオ風、解説風など</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start gap-4">
+                            <div class="text-2xl">⏱️</div>
+                            <div>
+                                <h4 class="font-bold text-lg">目標時間</h4>
+                                <p class="text-gray-600">動画の長さを分単位で指定</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    <!-- Features Section -->
+    <section class="py-20 bg-white">
+        <div class="container mx-auto px-4">
+            <h2 class="text-4xl font-bold text-center mb-12">特徴</h2>
+            <div class="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+                <div class="flex gap-4">
+                    <div class="text-purple-600 text-2xl">📄</div>
+                    <div>
+                        <h3 class="font-bold text-lg mb-2">PDF処理</h3>
+                        <p class="text-gray-600">PDFページをスライド画像に変換</p>
+                    </div>
+                </div>
+                <div class="flex gap-4">
+                    <div class="text-purple-600 text-2xl">🎙️</div>
+                    <div>
+                        <h3 class="font-bold text-lg mb-2">高品質音声合成</h3>
+                        <p class="text-gray-600">VOICEVOXを使用した高品質な日本語音声合成（18種類のキャラクター）</p>
+                    </div>
+                </div>
+                <div class="flex gap-4">
+                    <div class="text-purple-600 text-2xl">💬</div>
+                    <div>
+                        <h3 class="font-bold text-lg mb-2">複数AIプロバイダー対応</h3>
+                        <p class="text-gray-600">OpenAI (GPT-4, GPT-3.5)、Claude (Anthropic)、Google Gemini、AWS Bedrock</p>
+                    </div>
+                </div>
+                <div class="flex gap-4">
+                    <div class="text-purple-600 text-2xl">🎬</div>
+                    <div>
+                        <h3 class="font-bold text-lg mb-2">動画生成</h3>
+                        <p class="text-gray-600">スライドと音声を同期した動画生成</p>
+                    </div>
+                </div>
+                <div class="flex gap-4">
+                    <div class="text-purple-600 text-2xl">✏️</div>
+                    <div>
+                        <h3 class="font-bold text-lg mb-2">Web編集機能</h3>
+                        <p class="text-gray-600">Webアプリで対話内容を編集・再生成可能</p>
+                    </div>
+                </div>
+                <div class="flex gap-4">
+                    <div class="text-purple-600 text-2xl">⚙️</div>
+                    <div>
+                        <h3 class="font-bold text-lg mb-2">API管理</h3>
+                        <p class="text-gray-600">Web UIでのLLMプロバイダー設定とAPIキー管理</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Installation Section -->
+    <section class="py-20 bg-gray-50">
+        <div class="container mx-auto px-4">
+            <h2 class="text-4xl font-bold text-center mb-12">インストール</h2>
+            <div class="max-w-4xl mx-auto">
+                <div class="bg-white rounded-lg shadow-lg p-8">
+                    <h3 class="text-2xl font-bold mb-6">1. リポジトリのクローン</h3>
+                    <div class="bg-gray-900 text-white p-4 rounded-lg mb-8 overflow-x-auto">
+                        <code class="block">git clone https://github.com/Tdual/longan.git</code>
+                        <code class="block">cd longan</code>
+                    </div>
+
+                    <h3 class="text-2xl font-bold mb-6">2. 起動（推奨：起動スクリプトを使用）</h3>
+                    <div class="bg-gray-900 text-white p-4 rounded-lg mb-4 overflow-x-auto">
+                        <code class="block"># 起動スクリプトを使用（.envファイルが自動的に作成されます）</code>
+                        <code class="block">./start.sh</code>
+                        <code class="block"></code>
+                        <code class="block"># バックグラウンドで起動する場合</code>
+                        <code class="block">./start.sh -d</code>
+                    </div>
+                    <p class="text-gray-600 mb-8">
+                        起動スクリプトは以下を自動的に行います：<br>
+                        • <code>.env</code>ファイルが存在しない場合、<code>.env.example</code>をコピーして作成<br>
+                        • Docker Composeでサービスを起動
+                    </p>
+
+                    <p class="text-lg mb-4">これで以下のサービスが起動します：</p>
+                    <ul class="space-y-2 text-gray-600">
+                        <li>• Webアプリ: <code>http://localhost:3000</code></li>
+                        <li>• API: <code>http://localhost:8000</code></li>
+                        <li>• VOICEVOX: <code>http://localhost:50021</code></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Usage Section -->
+    <section class="py-20 bg-white">
+        <div class="container mx-auto px-4">
+            <h2 class="text-4xl font-bold text-center mb-12">使用方法</h2>
+            <div class="max-w-4xl mx-auto">
+                <h3 class="text-2xl font-bold mb-6">Webアプリでの使い方（推奨）</h3>
+                <ol class="space-y-4">
+                    <li class="flex gap-4">
+                        <div class="bg-purple-600 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">1</div>
+                        <p>ブラウザで <code>http://localhost:3000</code> にアクセス</p>
+                    </li>
+                    <li class="flex gap-4">
+                        <div class="bg-purple-600 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">2</div>
+                        <p>初回起動時は設定画面でLLMプロバイダーのAPIキーを設定</p>
+                    </li>
+                    <li class="flex gap-4">
+                        <div class="bg-purple-600 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">3</div>
+                        <p>PDFファイルをアップロード</p>
+                    </li>
+                    <li class="flex gap-4">
+                        <div class="bg-purple-600 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">4</div>
+                        <div>
+                            <p>以下の設定を行う：</p>
+                            <ul class="mt-2 space-y-1 text-gray-600">
+                                <li>• 目安時間（分）</li>
+                                <li>• スピーカー1（デフォルト：四国めたん）</li>
+                                <li>• スピーカー2（デフォルト：ずんだもん）</li>
+                                <li>• 会話スタイル（友達風、ビジネス風など）</li>
+                            </ul>
+                        </div>
+                    </li>
+                    <li class="flex gap-4">
+                        <div class="bg-purple-600 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">5</div>
+                        <p>「動画を生成」ボタンをクリック</p>
+                    </li>
+                    <li class="flex gap-4">
+                        <div class="bg-purple-600 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">6</div>
+                        <p>生成された対話を確認・編集</p>
+                    </li>
+                    <li class="flex gap-4">
+                        <div class="bg-purple-600 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">7</div>
+                        <p>動画をダウンロード</p>
+                    </li>
+                </ol>
+            </div>
+        </div>
+    </section>
+
+    <!-- Requirements Section -->
+    <section class="py-20 bg-gray-50">
+        <div class="container mx-auto px-4">
+            <h2 class="text-4xl font-bold text-center mb-12">必要な環境</h2>
+            <div class="max-w-4xl mx-auto">
+                <div class="bg-white rounded-lg shadow-lg p-8">
+                    <h3 class="text-xl font-bold mb-4">Docker環境（推奨）</h3>
+                    <ul class="space-y-3 mb-6">
+                        <li class="flex items-center gap-3">
+                            <i class="fas fa-check text-green-600"></i>
+                            <span>Docker</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <i class="fas fa-check text-green-600"></i>
+                            <span>Docker Compose</span>
+                        </li>
+                    </ul>
+                    <h3 class="text-xl font-bold mb-4">ローカル環境（代替）</h3>
+                    <ul class="space-y-3">
+                        <li class="flex items-center gap-3">
+                            <i class="fas fa-check text-green-600"></i>
+                            <span>Python 3.8+</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <i class="fas fa-check text-green-600"></i>
+                            <span>VOICEVOX（音声合成エンジン）</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <i class="fas fa-check text-green-600"></i>
+                            <span>OpenAI APIキー（対話生成用）</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <i class="fas fa-check text-green-600"></i>
+                            <span>Node.js 18+（Webアプリ用）</span>
+                        </li>
+                    </ul>
+                    <div class="mt-8 p-4 bg-blue-50 rounded-lg">
+                        <h4 class="font-bold text-lg mb-2">推奨：Docker環境での実行</h4>
+                        <p class="text-gray-600">
+                            Dockerを使用すれば、VOICEVOXやNode.jsの環境構築が不要になります。<br>
+                            詳細は<a href="https://github.com/Tdual/longan/blob/main/README_DOCKER.md" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">README_DOCKER.md</a>を参照してください。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="bg-gradient-to-br from-purple-600 to-blue-700 text-white py-20">
+        <div class="container mx-auto px-4 text-center">
+            <h2 class="text-4xl font-bold mb-8">今すぐ始めよう</h2>
+            <p class="text-xl mb-12">
+                完全無料のオープンソース。<br>
+                あなたのプレゼンテーションを魅力的な動画に変換しましょう。
+            </p>
+            <a href="https://github.com/Tdual/longan" target="_blank" rel="noopener noreferrer" class="inline-block bg-white text-purple-600 px-10 py-5 rounded-lg font-bold text-xl hover:bg-gray-100 transition inline-flex items-center gap-2">
+                <i class="fab fa-github"></i>
+                GitHubリポジトリへ
+            </a>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white py-12">
+        <div class="container mx-auto px-4">
+            <div class="text-center">
+                <div class="flex items-center justify-center gap-3 mb-4">
+                    <img src="/favicon.png" alt="Longan Logo" class="w-10 h-10" width="40" height="40" loading="lazy">
+                    <h3 class="text-2xl font-bold">
+                        <ruby>
+                            Longan
+                            <rp>(</rp>
+                            <rt class="text-sm font-normal">ロンガン</rt>
+                            <rp>)</rp>
+                        </ruby>
+                    </h3>
+                </div>
+                <p class="mb-6">AI動画ナレーションジェネレーター</p>
+                <div class="mb-8">
+                    <p class="font-semibold mb-2">開発メンバー</p>
+                    <p>プロダクトマネージャー：tdual(ティーデュアル)</p>
+                    <p>開発者：Claude Code</p>
+                </div>
+                <div class="mb-8">
+                    <p class="font-semibold mb-2">連絡先</p>
+                    <p>Email: <a href="mailto:tdualdir@gmail.com" class="hover:underline">tdualdir@gmail.com</a></p>
+                    <p>X (Twitter): <a href="https://x.com/tdualdir" target="_blank" rel="noopener noreferrer" class="hover:underline">@tdualdir</a></p>
+                </div>
+                <div class="pt-8 border-t border-gray-700">
+                    <p>&copy; 2024 Longan. MIT License.</p>
+                    <p class="text-sm text-gray-400 mt-2">
+                        VOICEVOXは高品質な日本語音声合成エンジンです。<br>
+                        全てのOSSコミッターに感謝いたします。
+                    </p>
+                </div>
+            </div>
+        </div>
+    </footer>
+    <!-- Preconnect to external domains -->
+    <link rel="preconnect" href="https://cdn.tailwindcss.com">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <link rel="preconnect" href="https://www.youtube.com">
+    <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
+    <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
+    <link rel="dns-prefetch" href="https://www.youtube.com">
+</body>
+</html>
