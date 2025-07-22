@@ -1,5 +1,5 @@
 import os
-import docx
+from docx import Document
 import zipfile
 import xml.etree.ElementTree as ET
 import fitz  # PyMuPDF
@@ -56,7 +56,7 @@ def extract_text_from_md(file_path: Path) -> str:
 def extract_text_from_docx(file_path: Path) -> str:
     """docxファイルからテキストを抽出"""
     try:
-        doc = docx.Document(file_path)
+        doc = Document(file_path)
         text_parts = []
         
         for paragraph in doc.paragraphs:

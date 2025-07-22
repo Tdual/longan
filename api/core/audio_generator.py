@@ -3,6 +3,9 @@ from pathlib import Path
 import json
 import requests
 import os
+import numpy as np
+from scipy.io import wavfile
+from scipy import signal
 
 # srcディレクトリをパスに追加
 sys.path.append(str(Path(__file__).parent.parent.parent / "src"))
@@ -149,6 +152,52 @@ class AudioGenerator:
                 with open(output_path, "wb") as f:
                     f.write(synthesis_response.content)
                 
+                # 高周波ノイズをフィルタリングで除去
+                self.apply_noise_reduction(output_path)
+                
                 audio_count += 1
         
         return audio_count
+    
+    def apply_noise_reduction(self, audio_path: Path):
+        """高周波ノイズをフィルタリングで除去"""
+        try:
+            # 音声ファイルを読み込み
+            sample_rate, data = wavfile.read(audio_path)
+            
+            # ステレオの場合は各チャンネルを処理
+            if len(data.shape) > 1:
+                # ステレオの場合
+                filtered_data = np.zeros_like(data)
+                for channel in range(data.shape[1]):
+                    filtered_data[:, channel] = self._apply_lowpass_filter(
+                        data[:, channel], sample_rate
+                    )
+            else:
+                # モノラルの場合
+                filtered_data = self._apply_lowpass_filter(data, sample_rate)
+            
+            # フィルタリングした音声を保存
+            wavfile.write(audio_path, sample_rate, filtered_data.astype(data.dtype))
+            
+        except Exception as e:
+            print(f"音声フィルタリングエラー: {e}")
+            # エラーが発生しても処理を継続
+    
+    def _apply_lowpass_filter(self, audio_data: np.ndarray, sample_rate: int) -> np.ndarray:
+        """ローパスフィルタを適用して高周波ノイズを除去"""
+        # カットオフ周波数：8kHz（人音の基本周波数を保持）
+        cutoff_freq = 8000
+        nyquist_freq = sample_rate / 2
+        
+        # ナイキスト周波数で正規化
+        normalized_cutoff = cutoff_freq / nyquist_freq
+        
+        # Butterworthフィルタを作成（次数は6で急峻なカットオフ）
+        b, a = signal.butter(6, normalized_cutoff, btype='low')
+        
+        # フィルタを適用
+        filtered_audio = signal.filtfilt(b, a, audio_data.astype(np.float64))
+        
+        # データ型を元に戻す
+        return filtered_audio
