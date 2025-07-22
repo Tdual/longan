@@ -1,5 +1,12 @@
 # Longan（ロンガン） - AI動画ナレーションジェネレーター
 
+[![GitHub stars](https://img.shields.io/github/stars/Tdual/longan?style=social)](https://github.com/Tdual/longan)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![ja](https://img.shields.io/badge/lang-ja-green.svg)](https://github.com/Tdual/longan/blob/main/README.md)
+[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
+[![VOICEVOX](https://img.shields.io/badge/VOICEVOX-Compatible-brightgreen.svg)](https://voicevox.hiroshiba.jp/)
+
 **🌐 公式サイト: https://longan-ai.com/**
 
 **🎉 完全無料のオープンソースソフトウェア（OSS）です！**
