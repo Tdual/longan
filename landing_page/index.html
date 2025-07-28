@@ -39,7 +39,7 @@
             animation: fadeInUp 0.8s ease-out;
         }
         .gradient-text {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
@@ -117,7 +117,7 @@
 </head>
 <body class="bg-gray-50" lang="ja">
     <!-- Hero Section -->
-    <section class="bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600 text-white">
+    <section class="bg-gradient-to-br from-green-600 via-emerald-600 to-teal-600 text-white">
         <div class="container mx-auto px-4 py-20">
             <div class="text-center animate-fade-in-up">
                 <div class="flex items-center justify-center gap-4 mb-6">
@@ -134,21 +134,39 @@
                 <p class="text-2xl md:text-3xl mb-4">
                     AI動画ナレーションジェネレーター
                 </p>
-                <div class="bg-white/20 backdrop-blur-sm rounded-full inline-block px-6 py-2 mb-8">
-                    <p class="text-lg font-semibold">
-                        🎉 完全無料のオープンソースソフトウェア（OSS）です！
-                    </p>
+                <div class="bg-white/20 backdrop-blur-sm rounded-lg inline-block px-8 py-4 mb-8">
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 text-lg font-semibold">
+                        <div class="flex items-center gap-2">
+                            <span class="text-2xl">💰</span>
+                            <span>完全無料</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-2xl">🔍</span>
+                            <span>完全な透明性</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-2xl">🔒</span>
+                            <span>データの完全管理</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-2xl">🛠️</span>
+                            <span>カスタマイズ自由</span>
+                        </div>
+                    </div>
                 </div>
-                <p class="text-xl mb-12 max-w-3xl mx-auto">
-                    PDFスライドを日本語音声付きの動画に変換するツールです。<br>
-                    VOICEVOXを使用して、選択可能なキャラクターによる対話形式のナレーションを生成できます。
+                <p class="text-xl mb-4 max-w-3xl mx-auto">
+                    <strong>機密情報も安心して扱える</strong>オープンソースの動画生成ツール
+                </p>
+                <p class="text-lg mb-12 max-w-3xl mx-auto opacity-90">
+                    PDFスライドを日本語音声付きの動画に変換。<br>
+                    すべての処理を自社サーバー内で完結させることができます。
                 </p>
                 <div class="flex flex-col sm:flex-row gap-4 justify-center mb-8">
-                    <a href="https://github.com/Tdual/longan" target="_blank" rel="noopener noreferrer" class="bg-white text-purple-600 px-8 py-4 rounded-lg font-bold text-lg hover:bg-gray-100 transition inline-flex items-center gap-2">
+                    <a href="https://github.com/Tdual/longan" target="_blank" rel="noopener noreferrer" class="bg-white text-green-600 px-8 py-4 rounded-lg font-bold text-lg hover:bg-gray-100 transition inline-flex items-center gap-2">
                         <i class="fab fa-github"></i>
                         GitHubで見る
                     </a>
-                    <a href="#demo" class="border-2 border-white text-white px-8 py-4 rounded-lg font-bold text-lg hover:bg-white hover:text-purple-600 transition inline-flex items-center gap-2">
+                    <a href="#demo" class="border-2 border-white text-white px-8 py-4 rounded-lg font-bold text-lg hover:bg-white hover:text-green-600 transition inline-flex items-center gap-2">
                         <i class="fab fa-youtube"></i>
                         デモ動画を見る
                     </a>
@@ -157,78 +175,72 @@
         </div>
     </section>
 
+
     <!-- Use Cases Section -->
-    <section class="py-20 bg-gradient-to-br from-purple-50 to-blue-50">
+    <section class="py-20 bg-gradient-to-br from-green-50 to-emerald-50">
         <div class="container mx-auto px-4">
             <h2 class="text-4xl font-bold text-center mb-12">ユースケース</h2>
             <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
                 <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
-                    <h3 class="font-bold text-xl mb-3 text-purple-600">🏢 コーポレート／サービス紹介動画</h3>
+                    <h3 class="font-bold text-xl mb-3 text-green-600">🏢 コーポレート／サービス紹介動画</h3>
                     <p class="text-gray-600">自社のビジネスモデルや新製品の魅力を、ナレーション付きの短い映像でわかりやすく伝えます。</p>
                 </div>
                 <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
-                    <h3 class="font-bold text-xl mb-3 text-purple-600">📱 プロモーション＆キャンペーン動画</h3>
+                    <h3 class="font-bold text-xl mb-3 text-green-600">📱 プロモーション＆キャンペーン動画</h3>
                     <p class="text-gray-600">TikTokやYouTube Shorts向けのショート動画として自動生成。縦型フォーマットにも対応。</p>
                 </div>
                 <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
-                    <h3 class="font-bold text-xl mb-3 text-purple-600">📊 財務レポート／マーケット分析</h3>
+                    <h3 class="font-bold text-xl mb-3 text-green-600">📊 財務レポート／マーケット分析</h3>
                     <p class="text-gray-600">決算説明資料や市場調査レポートを、視覚的に訴えるアニメーション動画に変換。</p>
                 </div>
                 <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
-                    <h3 class="font-bold text-xl mb-3 text-purple-600">🎓 社内研修・オンボーディング教材</h3>
+                    <h3 class="font-bold text-xl mb-3 text-green-600">🎓 社内研修・オンボーディング教材</h3>
                     <p class="text-gray-600">マニュアルや研修スライドをベースにした解説動画を生成。リモート研修での理解促進に。</p>
                 </div>
                 <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
-                    <h3 class="font-bold text-xl mb-3 text-purple-600">💻 技術勉強会のプレゼン動画</h3>
+                    <h3 class="font-bold text-xl mb-3 text-green-600">💻 技術勉強会のプレゼン動画</h3>
                     <p class="text-gray-600">セミナー用スライドやハンドアウトの骨子を取りまとめ、ポイント解説付きの動画に。</p>
                 </div>
                 <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
-                    <h3 class="font-bold text-xl mb-3 text-purple-600">🔧 OSSハンズオンチュートリアル</h3>
+                    <h3 class="font-bold text-xl mb-3 text-green-600">🔧 OSSハンズオンチュートリアル</h3>
                     <p class="text-gray-600">インストール手順から基本操作までを、実演イメージの動画でガイド。</p>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Why Free Section -->
-    <section class="py-16 bg-blue-50">
+    <!-- Why OSS Section -->
+    <section class="py-16 bg-green-50">
         <div class="container mx-auto px-4">
-            <h2 class="text-4xl font-bold text-center mb-12">🆓 無料で使える理由</h2>
-            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
-                <div class="bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-4xl font-bold text-center mb-12">🌟 オープンソースだから実現できること</h2>
+            <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
+                <div class="bg-white p-6 rounded-lg shadow-lg border-2 border-green-400">
                     <div class="flex items-center gap-3 mb-3">
-                        <div class="text-green-600 text-2xl">✅</div>
-                        <h3 class="font-bold text-lg">ソースコード公開</h3>
+                        <div class="text-green-600 text-3xl">💰</div>
+                        <h3 class="font-bold text-xl">完全無料</h3>
                     </div>
-                    <p class="text-gray-600">GitHubで全てのコードを公開</p>
+                    <p class="text-gray-700 font-medium">サブスクリプションや追加料金は一切不要</p>
                 </div>
-                <div class="bg-white p-6 rounded-lg shadow-md">
+                <div class="bg-white p-6 rounded-lg shadow-lg border-2 border-green-400">
                     <div class="flex items-center gap-3 mb-3">
-                        <div class="text-green-600 text-2xl">✅</div>
-                        <h3 class="font-bold text-lg">商用利用可能</h3>
+                        <div class="text-green-600 text-3xl">🔍</div>
+                        <h3 class="font-bold text-xl">完全な透明性</h3>
                     </div>
-                    <p class="text-gray-600">個人・法人問わず無料で利用可能</p>
+                    <p class="text-gray-700 font-medium">ソースコードを確認し、何が行われているか把握できます</p>
                 </div>
-                <div class="bg-white p-6 rounded-lg shadow-md">
+                <div class="bg-white p-6 rounded-lg shadow-lg border-2 border-green-400">
                     <div class="flex items-center gap-3 mb-3">
-                        <div class="text-green-600 text-2xl">✅</div>
-                        <h3 class="font-bold text-lg">改変・再配布自由</h3>
+                        <div class="text-green-600 text-3xl">🔒</div>
+                        <h3 class="font-bold text-xl">データの完全管理</h3>
                     </div>
-                    <p class="text-gray-600">MITライセンスで自由に改変・配布できます</p>
+                    <p class="text-gray-700 font-medium">機密情報がクラウドに送信されることなく、自社サーバーで処理</p>
                 </div>
-                <div class="bg-white p-6 rounded-lg shadow-md">
+                <div class="bg-white p-6 rounded-lg shadow-lg border-2 border-green-400">
                     <div class="flex items-center gap-3 mb-3">
-                        <div class="text-green-600 text-2xl">✅</div>
-                        <h3 class="font-bold text-lg">音声合成も無料</h3>
+                        <div class="text-green-600 text-3xl">🛠️</div>
+                        <h3 class="font-bold text-xl">カスタマイズ自由</h3>
                     </div>
-                    <p class="text-gray-600">VOICEVOXは無料で使える日本語音声合成エンジン</p>
-                </div>
-                <div class="bg-white p-6 rounded-lg shadow-md">
-                    <div class="flex items-center gap-3 mb-3">
-                        <div class="text-green-600 text-2xl">✅</div>
-                        <h3 class="font-bold text-lg">隠れたコストなし</h3>
-                    </div>
-                    <p class="text-gray-600">サブスクリプションや追加料金は一切不要</p>
+                    <p class="text-gray-700 font-medium">自社の要件に合わせて機能追加・改変が可能</p>
                 </div>
             </div>
             <p class="text-center text-gray-600 mt-8">
@@ -248,22 +260,22 @@
                     <img src="/images/pdf-screen.png" alt="PDF入力例 - Longanで変換するPDFスライドのサンプル画面" class="mx-auto rounded-lg shadow-lg mb-4" style="max-width: 600px; width: 100%;" width="600" height="400" loading="lazy">
                 </div>
                 <div class="text-center text-4xl my-8">
-                    <i class="fas fa-arrow-down text-purple-600"></i>
-                    <p class="text-xl font-bold text-purple-600 mt-2">Longanで変換</p>
+                    <i class="fas fa-arrow-down text-green-600"></i>
+                    <p class="text-xl font-bold text-green-600 mt-2">Longanで変換</p>
                 </div>
                 <div class="text-center">
                     <h3 class="text-2xl font-bold mb-4">🎥 出力：ナレーション付き動画</h3>
                     <ul class="text-left max-w-2xl mx-auto space-y-2">
                         <li class="flex items-start gap-2">
-                            <span class="text-purple-600 mt-1">🎙️</span>
+                            <span class="text-green-600 mt-1">🎙️</span>
                             <span>VOICEVOXキャラクターによる対話形式のナレーション</span>
                         </li>
                         <li class="flex items-start gap-2">
-                            <span class="text-purple-600 mt-1">📽️</span>
+                            <span class="text-green-600 mt-1">📽️</span>
                             <span>スライドと音声が同期した動画ファイル（MP4）</span>
                         </li>
                         <li class="flex items-start gap-2">
-                            <span class="text-purple-600 mt-1">⏱️</span>
+                            <span class="text-green-600 mt-1">⏱️</span>
                             <span>指定した目標時間に自動調整</span>
                         </li>
                     </ul>
@@ -332,46 +344,209 @@
             <h2 class="text-4xl font-bold text-center mb-12">特徴</h2>
             <div class="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
                 <div class="flex gap-4">
-                    <div class="text-purple-600 text-2xl">📄</div>
+                    <div class="text-green-600 text-2xl">📄</div>
                     <div>
                         <h3 class="font-bold text-lg mb-2">PDF処理</h3>
                         <p class="text-gray-600">PDFページをスライド画像に変換</p>
                     </div>
                 </div>
                 <div class="flex gap-4">
-                    <div class="text-purple-600 text-2xl">🎙️</div>
+                    <div class="text-green-600 text-2xl">🎙️</div>
                     <div>
                         <h3 class="font-bold text-lg mb-2">高品質音声合成</h3>
                         <p class="text-gray-600">VOICEVOXを使用した高品質な日本語音声合成（18種類のキャラクター）</p>
                     </div>
                 </div>
                 <div class="flex gap-4">
-                    <div class="text-purple-600 text-2xl">💬</div>
+                    <div class="text-green-600 text-2xl">💬</div>
                     <div>
                         <h3 class="font-bold text-lg mb-2">複数AIプロバイダー対応</h3>
                         <p class="text-gray-600">OpenAI (GPT-4, GPT-3.5)、Claude (Anthropic)、Google Gemini、AWS Bedrock</p>
                     </div>
                 </div>
                 <div class="flex gap-4">
-                    <div class="text-purple-600 text-2xl">🎬</div>
+                    <div class="text-green-600 text-2xl">🎬</div>
                     <div>
                         <h3 class="font-bold text-lg mb-2">動画生成</h3>
                         <p class="text-gray-600">スライドと音声を同期した動画生成</p>
                     </div>
                 </div>
                 <div class="flex gap-4">
-                    <div class="text-purple-600 text-2xl">✏️</div>
+                    <div class="text-green-600 text-2xl">✏️</div>
                     <div>
                         <h3 class="font-bold text-lg mb-2">Web編集機能</h3>
                         <p class="text-gray-600">Webアプリで対話内容を編集・再生成可能</p>
                     </div>
                 </div>
                 <div class="flex gap-4">
-                    <div class="text-purple-600 text-2xl">⚙️</div>
+                    <div class="text-green-600 text-2xl">⚙️</div>
                     <div>
                         <h3 class="font-bold text-lg mb-2">API管理</h3>
                         <p class="text-gray-600">Web UIでのLLMプロバイダー設定とAPIキー管理</p>
                     </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- API & Automation Section -->
+    <section class="py-20 bg-gradient-to-r from-blue-50 to-indigo-50">
+        <div class="container mx-auto px-4">
+            <h2 class="text-4xl font-bold text-center mb-12">🚀 API・スクリプトで完全自動化</h2>
+            <div class="max-w-6xl mx-auto">
+                <p class="text-center text-lg mb-12">
+                    <strong>Web UIだけじゃない！</strong><br>
+                    REST APIとPythonスクリプトで、あなたのワークフローに完全統合
+                </p>
+                
+                <div class="grid lg:grid-cols-2 gap-8 mb-12">
+                    <!-- REST API Section -->
+                    <div class="bg-white p-8 rounded-lg shadow-lg border-2 border-blue-400">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="text-blue-600 text-3xl">🔗</div>
+                            <h3 class="text-2xl font-bold text-blue-600">REST API</h3>
+                        </div>
+                        <p class="text-gray-700 mb-6">16の豊富なエンドポイントで、あらゆるシステムと連携可能</p>
+                        
+                        <div class="space-y-4">
+                            <div class="bg-blue-50 p-4 rounded-lg">
+                                <h4 class="font-bold text-blue-800 mb-2">🎬 動画生成API</h4>
+                                <code class="text-sm text-blue-700">POST /api/jobs/upload</code><br>
+                                <code class="text-sm text-blue-700">POST /api/jobs/{id}/generate-video</code>
+                            </div>
+                            <div class="bg-blue-50 p-4 rounded-lg">
+                                <h4 class="font-bold text-blue-800 mb-2">💬 対話編集API</h4>
+                                <code class="text-sm text-blue-700">GET /api/jobs/{id}/dialogue</code><br>
+                                <code class="text-sm text-blue-700">PUT /api/jobs/{id}/dialogue</code>
+                            </div>
+                            <div class="bg-blue-50 p-4 rounded-lg">
+                                <h4 class="font-bold text-blue-800 mb-2">🎙️ 音声設定API</h4>
+                                <code class="text-sm text-blue-700">GET /api/speakers</code><br>
+                                <code class="text-sm text-blue-700">POST /api/voice-sample</code>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Script Automation Section -->
+                    <div class="bg-white p-8 rounded-lg shadow-lg border-2 border-indigo-400">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="text-indigo-600 text-3xl">⚡</div>
+                            <h3 class="text-2xl font-bold text-indigo-600">Pythonスクリプト</h3>
+                        </div>
+                        <p class="text-gray-700 mb-6">コマンドライン実行で高度な自動化を実現</p>
+                        
+                        <div class="space-y-4">
+                            <div class="bg-indigo-50 p-4 rounded-lg">
+                                <h4 class="font-bold text-indigo-800 mb-2">🔊 音声生成</h4>
+                                <code class="text-sm text-indigo-700 block">python scripts/generate_audio.py</code>
+                                <p class="text-xs text-indigo-600 mt-1">表現豊かな音声パラメータで高品質生成</p>
+                            </div>
+                            <div class="bg-indigo-50 p-4 rounded-lg">
+                                <h4 class="font-bold text-indigo-800 mb-2">🎥 動画作成</h4>
+                                <code class="text-sm text-indigo-700 block">python scripts/create_video.py</code>
+                                <p class="text-xs text-indigo-600 mt-1">フェードアウト処理・最適化された間隔</p>
+                            </div>
+                            <div class="bg-indigo-50 p-4 rounded-lg">
+                                <h4 class="font-bold text-indigo-800 mb-2">🛠️ ファイル管理</h4>
+                                <code class="text-sm text-indigo-700 block">python scripts/organize_files.py</code>
+                                <p class="text-xs text-indigo-600 mt-1">バッチ処理で大量ファイルを効率管理</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Automation Examples -->
+                <div class="bg-white p-8 rounded-lg shadow-lg">
+                    <h3 class="text-2xl font-bold text-center mb-8 text-gray-800">💡 自動化の実例</h3>
+                    <div class="grid md:grid-cols-3 gap-6">
+                        <div class="text-center">
+                            <div class="text-4xl mb-4">📈</div>
+                            <h4 class="font-bold text-lg mb-2">CI/CD連携</h4>
+                            <p class="text-gray-600">GitHubでPDFが更新されたら自動で動画生成してS3にアップロード</p>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-4xl mb-4">📧</div>
+                            <h4 class="font-bold text-lg mb-2">メール自動送信</h4>
+                            <p class="text-gray-600">毎週の売上レポートPDFから動画を生成して関係者にメール配信</p>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-4xl mb-4">⏰</div>
+                            <h4 class="font-bold text-lg mb-2">スケジュール実行</h4>
+                            <p class="text-gray-600">cron設定で毎日決まった時間にプレゼン資料を動画化</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Customization Section -->
+    <section class="py-20 bg-emerald-50">
+        <div class="container mx-auto px-4">
+            <h2 class="text-4xl font-bold text-center mb-12">🛠️ カスタマイズ例</h2>
+            <div class="max-w-5xl mx-auto">
+                <p class="text-center text-lg mb-8">
+                    OSSだからこそ実現できる、企業ニーズに合わせた柔軟なカスタマイズ
+                </p>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="font-bold text-lg mb-3 text-emerald-600">🏢 企業ブランディング</h3>
+                        <ul class="text-gray-600 space-y-2">
+                            <li>• 自社ロゴやウォーターマークの自動挿入</li>
+                            <li>• コーポレートカラーに合わせたUI変更</li>
+                            <li>• 独自のオープニング/エンディング動画の追加</li>
+                        </ul>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="font-bold text-lg mb-3 text-emerald-600">🔊 音声カスタマイズ</h3>
+                        <ul class="text-gray-600 space-y-2">
+                            <li>• 社内用語や専門用語の読み方辞書追加</li>
+                            <li>• 自社オリジナルキャラクターの音声追加</li>
+                            <li>• BGMや効果音の自動挿入機能</li>
+                        </ul>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="font-bold text-lg mb-3 text-emerald-600">🔗 システム連携</h3>
+                        <ul class="text-gray-600 space-y-2">
+                            <li>• 社内文書管理システムとの自動連携</li>
+                            <li>• Slack/Teamsへの完成通知機能</li>
+                            <li>• 動画配信プラットフォームへの自動アップロード</li>
+                        </ul>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="font-bold text-lg mb-3 text-emerald-600">📊 分析・最適化</h3>
+                        <ul class="text-gray-600 space-y-2">
+                            <li>• 動画生成履歴の分析ダッシュボード</li>
+                            <li>• 部署別利用統計の可視化</li>
+                            <li>• 処理時間短縮のための並列処理実装</li>
+                        </ul>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="font-bold text-lg mb-3 text-emerald-600">🌐 多言語対応</h3>
+                        <ul class="text-gray-600 space-y-2">
+                            <li>• 英語・中国語など他言語への拡張</li>
+                            <li>• 字幕の自動生成機能</li>
+                            <li>• 多言語混在スライドの処理対応</li>
+                        </ul>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="font-bold text-lg mb-3 text-emerald-600">🎯 業界特化</h3>
+                        <ul class="text-gray-600 space-y-2">
+                            <li>• 医療：症例説明用テンプレート</li>
+                            <li>• 教育：授業コンテンツ自動生成</li>
+                            <li>• 金融：コンプライアンスチェック機能</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="mt-8 text-center">
+                    <p class="text-gray-700 mb-4">
+                        <strong>💡 これらはほんの一例です</strong><br>
+                        ソースコードが公開されているため、あなたの想像力次第で無限の可能性があります
+                    </p>
+                    <a href="https://github.com/Tdual/longan" target="_blank" rel="noopener noreferrer" class="inline-block bg-emerald-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-emerald-700 transition">
+                        <i class="fab fa-github mr-2"></i>
+                        カスタマイズを始める
+                    </a>
                 </div>
             </div>
         </div>
@@ -422,19 +597,19 @@
                 <h3 class="text-2xl font-bold mb-6">Webアプリでの使い方（推奨）</h3>
                 <ol class="space-y-4">
                     <li class="flex gap-4">
-                        <div class="bg-purple-600 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">1</div>
+                        <div class="bg-green-600 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">1</div>
                         <p>ブラウザで <code>http://localhost:3000</code> にアクセス</p>
                     </li>
                     <li class="flex gap-4">
-                        <div class="bg-purple-600 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">2</div>
+                        <div class="bg-green-600 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">2</div>
                         <p>初回起動時は設定画面でLLMプロバイダーのAPIキーを設定</p>
                     </li>
                     <li class="flex gap-4">
-                        <div class="bg-purple-600 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">3</div>
+                        <div class="bg-green-600 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">3</div>
                         <p>PDFファイルをアップロード</p>
                     </li>
                     <li class="flex gap-4">
-                        <div class="bg-purple-600 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">4</div>
+                        <div class="bg-green-600 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">4</div>
                         <div>
                             <p>以下の設定を行う：</p>
                             <ul class="mt-2 space-y-1 text-gray-600">
@@ -446,15 +621,15 @@
                         </div>
                     </li>
                     <li class="flex gap-4">
-                        <div class="bg-purple-600 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">5</div>
+                        <div class="bg-green-600 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">5</div>
                         <p>「動画を生成」ボタンをクリック</p>
                     </li>
                     <li class="flex gap-4">
-                        <div class="bg-purple-600 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">6</div>
+                        <div class="bg-green-600 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">6</div>
                         <p>生成された対話を確認・編集</p>
                     </li>
                     <li class="flex gap-4">
-                        <div class="bg-purple-600 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">7</div>
+                        <div class="bg-green-600 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">7</div>
                         <p>動画をダウンロード</p>
                     </li>
                 </ol>
@@ -498,11 +673,11 @@
                             <span>Node.js 18+（Webアプリ用）</span>
                         </li>
                     </ul>
-                    <div class="mt-8 p-4 bg-blue-50 rounded-lg">
+                    <div class="mt-8 p-4 bg-green-50 rounded-lg">
                         <h4 class="font-bold text-lg mb-2">推奨：Docker環境での実行</h4>
                         <p class="text-gray-600">
                             Dockerを使用すれば、VOICEVOXやNode.jsの環境構築が不要になります。<br>
-                            詳細は<a href="https://github.com/Tdual/longan/blob/main/README_DOCKER.md" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">README_DOCKER.md</a>を参照してください。
+                            詳細は<a href="https://github.com/Tdual/longan/blob/main/README_DOCKER.md" target="_blank" rel="noopener noreferrer" class="text-green-600 hover:underline">README_DOCKER.md</a>を参照してください。
                         </p>
                     </div>
                 </div>
@@ -511,14 +686,14 @@
     </section>
 
     <!-- CTA Section -->
-    <section class="bg-gradient-to-br from-purple-600 to-blue-700 text-white py-20">
+    <section class="bg-gradient-to-br from-green-600 to-emerald-700 text-white py-20">
         <div class="container mx-auto px-4 text-center">
             <h2 class="text-4xl font-bold mb-8">今すぐ始めよう</h2>
             <p class="text-xl mb-12">
-                完全無料のオープンソース。<br>
-                あなたのプレゼンテーションを魅力的な動画に変換しましょう。
+                透明性・セキュリティ・カスタマイズ性を備えたオープンソース。<br>
+                機密情報も安心して扱える、あなたの組織専用の動画生成環境を構築しましょう。
             </p>
-            <a href="https://github.com/Tdual/longan" target="_blank" rel="noopener noreferrer" class="inline-block bg-white text-purple-600 px-10 py-5 rounded-lg font-bold text-xl hover:bg-gray-100 transition inline-flex items-center gap-2">
+            <a href="https://github.com/Tdual/longan" target="_blank" rel="noopener noreferrer" class="inline-block bg-white text-green-600 px-10 py-5 rounded-lg font-bold text-xl hover:bg-gray-100 transition inline-flex items-center gap-2">
                 <i class="fab fa-github"></i>
                 GitHubリポジトリへ
             </a>
