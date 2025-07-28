@@ -223,24 +223,70 @@ longan/
 
 ## API仕様
 
-### エンドポイント
+### 主要エンドポイント
 
-#### POST /api/jobs/upload
-PDFをアップロードしてジョブを作成
-- Parameters:
-  - file: PDFファイル
-  - target_duration: 目安時間（分）
-  - speaker1_id, speaker2_id: VOICEVOX話者ID
-  - conversation_style: 会話スタイル
+#### ジョブ管理
+- **POST /api/jobs/upload** - PDFアップロードとジョブ作成
+  - Parameters: file, target_duration, speaker1_id, speaker2_id, conversation_style
+- **GET /api/jobs/{job_id}/status** - ジョブ進行状況確認
+- **GET /api/jobs** - 全ジョブリスト取得
+- **DELETE /api/jobs/{job_id}** - ジョブ削除
 
-#### GET /api/jobs/{job_id}/status
-ジョブの進行状況を確認
+#### 対話・動画生成
+- **POST /api/jobs/{job_id}/generate-dialogue** - 対話スクリプト生成
+- **PUT /api/jobs/{job_id}/dialogue** - 対話スクリプト編集
+- **POST /api/jobs/{job_id}/generate-video** - ワンクリック動画生成
+- **GET /api/jobs/{job_id}/download** - 完成動画ダウンロード
 
-#### POST /api/jobs/{job_id}/regenerate-dialogue
-特定のスライドの対話を再生成
+#### 音声・スピーカー
+- **GET /api/speakers** - VOICEVOX話者一覧取得
+- **POST /api/voice-sample** - 音声サンプル生成
 
-#### POST /api/jobs/{job_id}/create-video
-最終動画を生成
+#### データ管理
+- **GET /api/jobs/{job_id}/dialogue** - 対話スクリプト取得
+- **GET /api/jobs/{job_id}/dialogue/csv** - CSV形式でダウンロード
+- **POST /api/jobs/{job_id}/dialogue/csv** - CSVからインポート
+- **GET /api/jobs/{job_id}/slides** - スライド画像リスト
+- **GET /api/jobs/{job_id}/metadata** - ジョブメタデータ
+
+#### LLM設定
+- **GET /api/settings/providers** - LLMプロバイダー一覧と状態
+- **POST /api/settings/provider** - プロバイダー設定保存
+- **DELETE /api/settings/provider/{provider}** - プロバイダー削除
+- **POST /api/settings/test-key** - APIキー有効性テスト
+- **PUT /api/settings** - 全般設定更新
+
+### スクリプト機能
+
+#### 音声生成スクリプト
+```bash
+# 表現豊かな音声生成（抑揚1.2、フェードアウト付き）
+python scripts/generate_audio.py
+
+# カタカナ変換音声生成
+python scripts/generate_katakana_audio.py
+
+# シンプル音声生成
+python scripts/generate_katakana_audio_simple.py
+```
+
+#### 動画作成スクリプト
+```bash
+# 高品質動画作成（フェードアウト処理、最適化された間隔）
+python scripts/create_video.py
+
+# 改良版動画作成
+python scripts/create_improved_video.py
+
+# テスト動画作成
+python scripts/create_katakana_test_video.py
+```
+
+#### ユーティリティスクリプト
+```bash
+# ファイル整理
+python scripts/organize_files.py
+```
 
 ### VOICEVOX話者ID
 - 2: 四国めたん（ノーマル）
