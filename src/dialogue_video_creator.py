@@ -61,8 +61,8 @@ class DialogueVideoCreator:
                     # 音声クリップを読み込み（24kHzに統一）
                     audio_clip = AudioFileClip(filtered_audio_path, fps=24000)
                     
-                    # 音声の開始と終了に非常に短いフェードを適用（クリック音防止）
-                    fade_duration = 0.02  # 20ms（より自然に）
+                    # 音声の開始と終了に改善されたフェードを適用（ビーン音防止）
+                    fade_duration = 0.05  # 50ms（ビーン音除去の最適値）
                     if audio_clip.duration > fade_duration * 2:
                         from moviepy.audio.fx.audio_fadein import audio_fadein
                         from moviepy.audio.fx.audio_fadeout import audio_fadeout
@@ -75,18 +75,37 @@ class DialogueVideoCreator:
                     # 音声をリストに追加
                     audio_clips.append(audio_clip)
                     
-                    # 話者交代の間を追加（最後の音声以外）
+                    # 話者交代の間を追加（最後の音声以外）テンポアップ版
                     if i < len(audio_infos) - 1:
-                        silence_duration = 0.3  # 300msの自然な間
+                        silence_duration = 0.2  # 200ms（テンポ向上・自然な会話リズム）
                         silence = self.create_silence(silence_duration)
                         audio_clips.append(silence)
             
             if audio_clips:
-                # 全ての音声クリップを単純に連結
-                combined_audio = concatenate_audioclips(audio_clips)
+                # 音声クリップを改善された方法で連結（クロスフェード付き）
+                if len(audio_clips) == 1:
+                    combined_audio = audio_clips[0]
+                else:
+                    # 最初のクリップから始める
+                    combined_audio = audio_clips[0]
+                    
+                    # 残りのクリップを順次結合（音声のみクロスフェード適用）
+                    for i in range(1, len(audio_clips)):
+                        current_clip = audio_clips[i]
+                        
+                        # 音声クリップ（無音ではない）の場合のみクロスフェード
+                        if i % 2 == 1:  # 奇数インデックスは音声クリップ
+                            # 短いクロスフェードで滑らかに接続
+                            crossfade_duration = min(0.05, combined_audio.duration/10, current_clip.duration/10)
+                            if crossfade_duration > 0.01:  # 10ms以上の場合のみ適用
+                                from moviepy.audio.fx.audio_fadein import audio_fadein
+                                current_clip = audio_fadein(current_clip, crossfade_duration)
+                        
+                        # クリップを結合
+                        combined_audio = concatenate_audioclips([combined_audio, current_clip])
                 
-                # 全体の最後に短い余白を追加
-                final_silence_duration = 0.5  # 0.5秒
+                # 全体の最後に短い余白を追加（テンポ重視版）
+                final_silence_duration = 0.3  # 0.3秒（テンポ向上）
                 final_silence = self.create_silence(final_silence_duration)
                 combined_audio = concatenate_audioclips([combined_audio, final_silence])
                 

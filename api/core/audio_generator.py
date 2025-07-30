@@ -6,11 +6,126 @@ import os
 import numpy as np
 from scipy.io import wavfile
 from scipy import signal
+import librosa
 
 # srcディレクトリをパスに追加
 sys.path.append(str(Path(__file__).parent.parent.parent / "src"))
 
 from voicevox_generator import VoicevoxGenerator
+
+class ImprovedAudioProcessor:
+    """ビーン音除去とクリック音除去の改善されたプロセッサー"""
+    
+    def __init__(self, sample_rate=24000):
+        self.sample_rate = sample_rate
+        # ビーン音の周波数帯域（分析結果に基づく）
+        self.beep_freq_range = (800, 3500)
+        
+    def remove_click_noise(self, audio_data):
+        """VOICEVOXのクリック音を除去（テンポ維持）"""
+        if len(audio_data) == 0:
+            return audio_data
+            
+        # 1. 急激な振幅変化を検出
+        audio_diff = np.diff(audio_data)
+        if len(audio_diff) > 0:
+            sudden_changes = np.abs(audio_diff) > np.std(audio_diff) * 5
+            
+            # 2. 急激な変化部分をスムージング
+            for i in np.where(sudden_changes)[0]:
+                if i > 5 and i < len(audio_data) - 5:
+                    # 前後5サンプルの平均で補間
+                    audio_data[i] = np.mean(audio_data[i-5:i+5])
+        
+        return audio_data
+    
+    def apply_beep_notch_filter(self, audio_data):
+        """ビーン音の特定周波数を除去（会話音質は保持）"""
+        if len(audio_data) == 0:
+            return audio_data
+            
+        # ビーン音の典型的周波数を狙い撃ち
+        target_freqs = [1000, 1500, 2000, 2500, 3000]
+        
+        for freq in target_freqs:
+            try:
+                # Q値を高く設定して狭い帯域のみ除去
+                Q = 30.0  # 高いQ値で会話に影響しない
+                w = freq / (self.sample_rate / 2)  # 正規化周波数
+                
+                # ナイキスト周波数を超える場合はスキップ
+                if w >= 1.0:
+                    continue
+                    
+                b, a = signal.iirnotch(w, Q)
+                audio_data = signal.filtfilt(b, a, audio_data.astype(np.float64))
+            except Exception as e:
+                print(f"ノッチフィルタエラー（{freq}Hz）: {e}")
+                continue
+        
+        return audio_data.astype(np.float32)
+    
+    def smart_fade(self, audio_data, fade_in_ms=50, fade_out_ms=50):
+        """スマートフェード：音声の特性に応じて最適化"""
+        if len(audio_data) == 0:
+            return audio_data
+            
+        fade_in_samples = int(fade_in_ms * self.sample_rate / 1000)
+        fade_out_samples = int(fade_out_ms * self.sample_rate / 1000)
+        
+        # サンプル数がフェード長より短い場合は調整
+        fade_in_samples = min(fade_in_samples, len(audio_data) // 4)
+        fade_out_samples = min(fade_out_samples, len(audio_data) // 4)
+        
+        # フェードイン：コサイン関数で自然な立ち上がり
+        if fade_in_samples > 0:
+            fade_in_curve = 0.5 * (1 - np.cos(np.linspace(0, np.pi, fade_in_samples)))
+            audio_data[:fade_in_samples] *= fade_in_curve
+            
+        # フェードアウト：コサイン関数で自然な終了
+        if fade_out_samples > 0:
+            fade_out_curve = 0.5 * (1 + np.cos(np.linspace(0, np.pi, fade_out_samples)))
+            audio_data[-fade_out_samples:] *= fade_out_curve
+            
+        return audio_data
+    
+    def process_voicevox_audio(self, input_path, output_path=None):
+        """VOICEVOXの音声を後処理（テンポ維持）"""
+        try:
+            # 音声を読み込み
+            audio_data, sr = librosa.load(input_path, sr=self.sample_rate, mono=True)
+            
+            if len(audio_data) == 0:
+                print(f"警告: 空の音声ファイル {input_path}")
+                return input_path
+            
+            # 1. クリック音除去
+            audio_data = self.remove_click_noise(audio_data)
+            
+            # 2. ビーン音の特定周波数を除去
+            audio_data = self.apply_beep_notch_filter(audio_data)
+            
+            # 3. スマートフェード適用
+            audio_data = self.smart_fade(audio_data, fade_in_ms=50, fade_out_ms=50)
+            
+            # 4. 音量正規化（クリッピング防止）
+            max_val = np.max(np.abs(audio_data))
+            if max_val > 0:
+                audio_data = audio_data * 0.95 / max_val
+            
+            # 5. 保存
+            if output_path is None:
+                output_path = input_path  # 上書き
+                
+            # librosaで保存（サンプリングレート指定）
+            librosa.output.write_wav(output_path, audio_data, sr)
+            print(f"音声後処理完了: {output_path}")
+            
+            return output_path
+            
+        except Exception as e:
+            print(f"音声後処理エラー {input_path}: {e}")
+            return input_path  # エラー時は元ファイルを返す
 
 class AudioGenerator:
     def __init__(self, job_id: str, base_dir: Path):
@@ -19,6 +134,8 @@ class AudioGenerator:
         self.audio_dir = base_dir / "audio" / job_id
         self.audio_dir.mkdir(parents=True, exist_ok=True)
         self.voicevox_url = os.getenv("VOICEVOX_URL", "http://localhost:50021")
+        # 改善されたオーディオプロセッサーを初期化
+        self.audio_processor = ImprovedAudioProcessor()
         
     def check_voicevox_status(self) -> bool:
         """VOICEVOXが起動しているか確認"""
@@ -155,8 +272,8 @@ class AudioGenerator:
                 with open(output_path, "wb") as f:
                     f.write(synthesis_response.content)
                 
-                # 高周波ノイズをフィルタリングで除去
-                self.apply_noise_reduction(output_path)
+                # 改善されたオーディオ処理を適用（ビーン音除去）
+                self.audio_processor.process_voicevox_audio(output_path)
                 
                 audio_count += 1
         
