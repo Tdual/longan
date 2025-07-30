@@ -4,8 +4,16 @@ import adapter from '@sveltejs/adapter-node';
 const config = {
 	kit: {
 		adapter: adapter({
-			out: 'build'
-		})
+			out: 'build',
+			// Node.jsのボディサイズ制限を増やす
+			env: {
+				BODY_SIZE_LIMIT: '52428800' // 50MB
+			}
+		}),
+		// SvelteKitのボディサイズ制限を増やす
+		csrf: {
+			checkOrigin: false
+		}
 	}
 };
 

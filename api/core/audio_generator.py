@@ -140,7 +140,10 @@ class AudioGenerator:
                 
                 synthesis_response = requests.post(
                     f"{self.voicevox_url}/synthesis",
-                    params={"speaker": speaker_id},
+                    params={
+                        "speaker": speaker_id,
+                        "outputSamplingRate": 24000  # 24kHzに統一
+                    },
                     json=synthesis_data
                 )
                 
@@ -186,18 +189,18 @@ class AudioGenerator:
     
     def _apply_lowpass_filter(self, audio_data: np.ndarray, sample_rate: int) -> np.ndarray:
         """ローパスフィルタを適用して高周波ノイズを除去"""
-        # カットオフ周波数：8kHz（人音の基本周波数を保持）
-        cutoff_freq = 8000
+        # カットオフ周波数：10kHz（音声の高域成分も保持）
+        cutoff_freq = 10000
         nyquist_freq = sample_rate / 2
         
         # ナイキスト周波数で正規化
         normalized_cutoff = cutoff_freq / nyquist_freq
         
-        # Butterworthフィルタを作成（次数は6で急峻なカットオフ）
-        b, a = signal.butter(6, normalized_cutoff, btype='low')
+        # Butterworthフィルタを作成（次数を4に下げて自然な音質を維持）
+        b, a = signal.butter(4, normalized_cutoff, btype='low')
         
-        # フィルタを適用
-        filtered_audio = signal.filtfilt(b, a, audio_data.astype(np.float64))
+        # フィルタを適用（lfilterを使用して境界処理を改善）
+        filtered_audio = signal.lfilter(b, a, audio_data.astype(np.float64))
         
         # データ型を元に戻す
         return filtered_audio

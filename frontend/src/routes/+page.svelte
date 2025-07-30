@@ -334,10 +334,16 @@
   }
 
   async function uploadAndGenerate() {
-    if (!selectedFile) return;
+    if (!selectedFile) {
+      console.error("No file selected");
+      return;
+    }
 
+    console.log("Uploading file:", selectedFile.name, selectedFile.type, selectedFile.size);
+    
     isUploading = true;
     try {
+      console.log("Creating FormData...");
       const formData = new FormData();
       formData.append("file", selectedFile);
       formData.append("target_duration", targetDuration.toString());
@@ -377,13 +383,27 @@
         formData.append("knowledge_file", knowledgeFile);
       }
 
+      console.log("Sending upload request...");
       const response = await fetch("/api/jobs/upload", {
         method: "POST",
         body: formData,
       });
+      console.log("Upload response received:", response.status);
 
       if (!response.ok) {
-        throw new Error("アップロードに失敗しました");
+        const errorText = await response.text();
+        console.error("アップロードエラー:", response.status, errorText);
+        let errorMessage = "アップロードに失敗しました";
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.detail || errorMessage;
+        } catch (e) {
+          // JSONパースエラーの場合はテキストをそのまま使用
+          if (errorText) {
+            errorMessage = errorText;
+          }
+        }
+        throw new Error(errorMessage);
       }
 
       const result = await response.json();
@@ -1394,6 +1414,28 @@
                 お使いのブラウザは動画再生に対応していません。
               </video>
             </div>
+            <div class="voicevox-credit-notice">
+              <h5>⚠️ 重要：VOICEVOXクレジット表記について</h5>
+              <p>
+                この動画を公開する場合は、動画の概要欄や説明欄に以下のクレジット表記が必要です：
+              </p>
+              <div class="credit-example">
+                {#if currentJobMetadata?.speaker1?.name}
+                  <strong>VOICEVOX:{currentJobMetadata.speaker1.name}</strong><br />
+                {:else}
+                  <strong>VOICEVOX:四国めたん</strong><br />
+                {/if}
+                {#if currentJobMetadata?.speaker2?.name}
+                  <strong>VOICEVOX:{currentJobMetadata.speaker2.name}</strong>
+                {:else}
+                  <strong>VOICEVOX:ずんだもん</strong>
+                {/if}
+              </div>
+              <p class="credit-note">
+                ※ 使用したキャラクター名を必ず記載してください。<br />
+                ※ クレジット表記はVOICEVOXの利用規約で定められています。
+              </p>
+            </div>
             <div class="action-buttons">
               <button
                 class="back-to-script-btn"
@@ -2027,6 +2069,40 @@
     max-width: 600px;
     margin-top: 1rem;
     border-radius: 8px;
+  }
+
+  .voicevox-credit-notice {
+    margin-top: 2rem;
+    padding: 1.5rem;
+    background-color: #fef3c7;
+    border: 2px solid #f59e0b;
+    border-radius: 8px;
+  }
+
+  .voicevox-credit-notice h5 {
+    margin: 0 0 0.5rem 0;
+    color: #d97706;
+    font-size: 1.1rem;
+  }
+
+  .voicevox-credit-notice p {
+    margin: 0.5rem 0;
+    color: #92400e;
+  }
+
+  .credit-example {
+    background-color: #fff;
+    padding: 1rem;
+    border-radius: 4px;
+    border: 1px solid #fbbf24;
+    margin: 0.5rem 0;
+    font-family: monospace;
+  }
+
+  .credit-note {
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+    color: #92400e;
   }
 
   .new-job-btn {

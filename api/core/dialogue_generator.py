@@ -242,8 +242,7 @@ JSON形式で各スライドの重要度係数を返してください。
             if progress_callback:
                 try:
                     progress_msg = f"スライド{i+1}/{len(slide_texts)}の対話を生成中..."
-                    localized_msg = localization_service.get_progress_message(progress_msg)
-                    progress_callback(localized_msg, (i / len(slide_texts)) * 100)
+                    progress_callback(progress_msg, (i / len(slide_texts)) * 100)
                 except Exception as e:
                     print(f"進捗コールバックエラー: {e}")
             
@@ -318,9 +317,8 @@ JSON形式で各スライドの重要度係数を返してください。
             if progress_callback:
                 try:
                     progress_msg = f"スライド{slide_num}の対話を再生成中... ({slide_numbers.index(slide_num)+1}/{len(slide_numbers)})"
-                    localized_msg = localization_service.get_progress_message(progress_msg)
                     progress = (slide_numbers.index(slide_num) / len(slide_numbers)) * 100
-                    progress_callback(localized_msg, progress)
+                    progress_callback(progress_msg, progress)
                 except Exception as e:
                     print(f"進捗コールバックエラー: {e}")
             

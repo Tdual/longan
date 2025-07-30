@@ -15,13 +15,17 @@ export const handle: Handle = async ({ event, resolve }) => {
         try {
             // multipart/form-dataの場合は特別な処理
             const contentType = event.request.headers.get('content-type') || '';
+            console.log(`Content-Type: ${contentType}`);
+            console.log(`Content-Length: ${event.request.headers.get('content-length')}`);
             
             let body;
             if (contentType.includes('multipart/form-data')) {
                 // multipart/form-dataの場合はそのまま転送
+                console.log('Processing multipart/form-data...');
                 body = event.request.body;
             } else {
                 // その他の場合は通常通り
+                console.log('Processing regular request...');
                 body = await event.request.arrayBuffer();
             }
             
@@ -33,6 +37,7 @@ export const handle: Handle = async ({ event, resolve }) => {
                 }
             });
             
+            console.log(`Sending ${event.request.method} request to ${apiUrl}...`);
             const response = await fetch(apiUrl, {
                 method: event.request.method,
                 headers: headers,
@@ -41,6 +46,7 @@ export const handle: Handle = async ({ event, resolve }) => {
                 duplex: 'half', // streaming bodyのために必要
                 signal: AbortSignal.timeout(300000) // 5分のタイムアウト（大きなPDFの処理用）
             });
+            console.log(`Response status: ${response.status}`);
 
             // レスポンスヘッダーをコピー
             const responseHeaders = new Headers();

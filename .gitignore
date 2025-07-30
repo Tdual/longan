@@ -103,6 +103,8 @@ test_data/
 
 # Log files
 *.log
+api_logs.txt
+api_error.log
 
 # Test scripts
 test_*.sh
@@ -112,6 +114,7 @@ test_*.js
 Dockerfile.simple
 Dockerfile.test
 docker-compose.simple.yml
+docker-compose.override.yml
 
 # Bug reports and recommendations
 bug_report_and_recommendations.md
@@ -134,3 +137,11 @@ route53-record.json
 # Presentation files
 longan_presentation.html
 note_article.txt
+
+# Analysis scripts (temporary)
+analyze_*.py
+*_noise_analysis.py
+simple_audio_analysis.py
+
+# Articles
+longan_zenn_article.md

@@ -52,7 +52,12 @@ class UpdateDialogueRequest(BaseModel):
 
 
 # FastAPIアプリケーション
-app = FastAPI(title="Gen Movie API", version="1.0.0")
+app = FastAPI(
+    title="Gen Movie API", 
+    version="1.0.0",
+    # 大きなファイルのアップロードを許可（100MB）
+    max_request_size=100 * 1024 * 1024
+)
 
 # アプリケーション起動時に設定を初期化
 @app.on_event("startup")
@@ -137,6 +142,10 @@ async def upload_pdf(
     # ファイル検証
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="PDFファイルのみ対応しています")
+    
+    # ファイルサイズ検証（100MB）
+    if file.size and file.size > 100 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="ファイルサイズが大きすぎます（最大100MB）")
     
     # ジョブID生成
     job_id = str(uuid.uuid4())
