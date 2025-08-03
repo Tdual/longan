@@ -7,6 +7,7 @@ import numpy as np
 from scipy.io import wavfile
 from scipy import signal
 import librosa
+import soundfile as sf
 
 # srcディレクトリをパスに追加
 sys.path.append(str(Path(__file__).parent.parent.parent / "src"))
@@ -117,8 +118,8 @@ class ImprovedAudioProcessor:
             if output_path is None:
                 output_path = input_path  # 上書き
                 
-            # librosaで保存（サンプリングレート指定）
-            librosa.output.write_wav(output_path, audio_data, sr)
+            # soundfileで保存（サンプリングレート指定）
+            sf.write(output_path, audio_data, sr)
             print(f"音声後処理完了: {output_path}")
             
             return output_path

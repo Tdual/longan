@@ -218,7 +218,9 @@ JSON形式で各スライドの重要度係数を返してください。
         dialogue_data = {}
         
         # まず各スライドの重要度を分析（ユーザー指示も考慮）
-        importance_map = await self.analyze_slide_importance(slide_texts, additional_prompt)
+        # 一時的に均等配分でテスト
+        importance_map = {i+1: 1.0 for i in range(len(slide_texts))}
+        # importance_map = await self.analyze_slide_importance(slide_texts, additional_prompt)
         
         # 重要度の合計を計算
         total_importance = sum(importance_map.get(i+1, 1.0) for i in range(len(slide_texts)))
@@ -292,7 +294,9 @@ JSON形式で各スライドの重要度係数を返してください。
         dialogue_data = existing_dialogues.copy()
         
         # 各スライドの重要度を分析（ユーザー指示も考慮）
-        importance_map = await self.analyze_slide_importance(slide_texts, additional_prompt)
+        # 一時的に均等配分でテスト
+        importance_map = {i+1: 1.0 for i in range(len(slide_texts))}
+        # importance_map = await self.analyze_slide_importance(slide_texts, additional_prompt)
         
         # 重要度の合計を計算
         total_importance = sum(importance_map.get(i+1, 1.0) for i in range(len(slide_texts)))
@@ -554,8 +558,13 @@ speakerは必ず"speaker1"か"speaker2"を使用してください。
         # 対話回数の設定（目安時間から逆算）
         # 日本語の読み上げ速度を約330文字/分として計算
         chars_per_second = 5.5
-        # 各発話の平均文字数を実際的な値に設定（GPT-4は2-4文で80-100文字程度生成する傾向）
-        avg_chars_per_utterance = 90
+        # 時間に応じて発話の文字数を調整
+        if target_seconds_per_slide < 5:
+            avg_chars_per_utterance = 15  # 超短時間：1発話15文字（3秒程度）
+        elif target_seconds_per_slide < 10:
+            avg_chars_per_utterance = 30  # 短時間：1発話30文字（5-6秒程度）
+        else:
+            avg_chars_per_utterance = 90  # 通常：1発話90文字
         # スライド間の間隔0.5秒、発話間の間隔0.3秒を考慮
         # 各スライドの発話数を推定（例：10発話なら3秒の間隔）
         estimated_utterances_raw = (target_seconds_per_slide * chars_per_second) / avg_chars_per_utterance
@@ -563,7 +572,11 @@ speakerは必ず"speaker1"か"speaker2"を使用してください。
         
         # 利用可能な秒数から発話数を再計算
         available_seconds = target_seconds_per_slide - pause_time
-        estimated_utterances = max(2, int((available_seconds * chars_per_second) / avg_chars_per_utterance))
+        # 短い時間の場合は1発話も許可
+        if target_seconds_per_slide < 5:
+            estimated_utterances = max(1, int((available_seconds * chars_per_second) / avg_chars_per_utterance))
+        else:
+            estimated_utterances = max(2, int((available_seconds * chars_per_second) / avg_chars_per_utterance))
         
         # 最小値と最大値を設定（時間制約を厳守）
         if is_title_slide:
@@ -579,12 +592,20 @@ speakerは必ず"speaker1"か"speaker2"を使用してください。
             dialogue_count_instruction = "3〜4個の発話で簡潔に（speaker1が項目を読み上げ、speaker2が最後に期待感を示すだけ）"
             min_dialogues_for_this_slide = min_utterances
         else:
-            # 通常スライドは計算値を尊重（最低値の強制をしない）
-            min_utterances = max(2, int(estimated_utterances * 0.8))
+            # 通常スライドは計算値を尊重（時間に応じて最低値を調整）
+            if target_seconds_per_slide < 5:
+                min_utterances = max(1, int(estimated_utterances * 0.8))
+            else:
+                min_utterances = max(2, int(estimated_utterances * 0.8))
             max_utterances = int(estimated_utterances * 1.2)
             # 各発話の目安文字数も明示
             chars_per_utterance_instruction = int(avg_chars_per_utterance * 0.8)
-            dialogue_count_instruction = "{}〜{}個の発話を作成（各発話は{}文字程度、目安時間約{}秒）".format(min_utterances, max_utterances, chars_per_utterance_instruction, int(target_seconds_per_slide))
+            if target_seconds_per_slide < 5:
+                dialogue_count_instruction = "【厳守】{}〜{}個の発話のみ（各発話は必ず{}文字以内、合計{}秒以内）".format(
+                    min_utterances, max_utterances, chars_per_utterance_instruction, int(target_seconds_per_slide))
+            else:
+                dialogue_count_instruction = "{}〜{}個の発話を作成（各発話は{}文字程度、目安時間約{}秒）".format(
+                    min_utterances, max_utterances, chars_per_utterance_instruction, int(target_seconds_per_slide))
             min_dialogues_for_this_slide = min_utterances
             
         # 追加プロンプトで対話回数が明示的に指定されている場合は上書き

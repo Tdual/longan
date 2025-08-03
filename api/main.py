@@ -14,6 +14,8 @@ import os
 import csv
 import io
 from api.core.status_codes import StatusCode
+from api.core.job_processor import JobProcessor
+from api.core.async_worker import async_worker
 
 # モデル定義
 class JobStatus(BaseModel):
@@ -357,23 +359,27 @@ async def generate_dialogue_only(
                 detail=f"対話生成できない状態です: {job.status}"
             )
     
+    # 既に同じジョブが実行中かチェック
+    if async_worker.is_task_running(f"dialogue_{job_id}"):
+        raise HTTPException(
+            status_code=409, 
+            detail="対話生成が既に実行中です"
+        )
+    
     # ステータス更新
     job.status = "generating_dialogue"
     job.status_code = StatusCode.DIALOGUE_GENERATING
     job.progress = 30
     job.updated_at = datetime.now()
     
-    # バックグラウンドで対話生成
-    def run_in_thread():
-        # additional_promptがある場合は再生成とみなす
-        is_regeneration = bool(request.additional_prompt)
-        asyncio.run(generate_dialogue_task(job_id, request.additional_prompt, is_regeneration))
+    # 非同期ワーカーで対話生成
+    await async_worker.submit_task(
+        f"dialogue_{job_id}",
+        JobProcessor.generate_dialogue_sync,
+        job_id, request.additional_prompt, jobs_db
+    )
     
-    thread = threading.Thread(target=run_in_thread)
-    thread.daemon = True
-    thread.start()
-    
-    return {"message": "対話スクリプト生成を開始しました", "job_id": job_id}
+    return {"message": "対話スクリプト生成を開始しました（非同期処理）", "job_id": job_id}
 
 @app.get("/api/jobs/{job_id}/slides")
 async def get_slides(job_id: str):
@@ -726,7 +732,7 @@ async def generate_video_complete(
     job_id: str,
     background_tasks: BackgroundTasks
 ):
-    """ワンクリック動画生成（全工程を自動実行）"""
+    """ワンクリック動画生成（全工程を自動実行・非同期処理）"""
     
     if job_id not in jobs_db:
         raise HTTPException(status_code=404, detail="ジョブが見つかりません")
@@ -739,26 +745,39 @@ async def generate_video_complete(
             detail="ジョブが適切な状態ではありません"
         )
     
+    # 既に同じジョブが実行中かチェック
+    if async_worker.is_task_running(f"complete_{job_id}"):
+        raise HTTPException(
+            status_code=409, 
+            detail="このジョブは既に処理中です"
+        )
+    
     # ステータス更新
     job.status = "processing"
     job.status_code = StatusCode.PROCESSING
-    job.progress = 10
+    job.progress = 5
     job.updated_at = datetime.now()
     
-    # バックグラウンドで全工程を実行（スレッドで実行してメインスレッドをブロックしない）
-    def run_in_thread():
-        asyncio.run(generate_complete_video(job_id))
+    # 非同期で全工程を実行（直接呼び出し）
+    asyncio.create_task(JobProcessor.process_complete_video_async(job_id, jobs_db))
     
-    thread = threading.Thread(target=run_in_thread)
-    thread.daemon = True
-    thread.start()
-    
-    return {"message": "動画生成を開始しました", "job_id": job_id}
+    return {"message": "動画生成を開始しました（非同期処理）", "job_id": job_id}
 
 @app.get("/api/jobs", response_model=List[JobStatus])
 async def list_jobs():
     """全ジョブのリストを取得"""
     return list(jobs_db.values())
+
+@app.get("/api/system/status")
+async def get_system_status():
+    """システム状態を取得"""
+    running_tasks = async_worker.get_running_tasks()
+    return {
+        "running_tasks": running_tasks,
+        "active_jobs": len([job for job in jobs_db.values() if job.status == "processing"]),
+        "total_jobs": len(jobs_db),
+        "worker_capacity": async_worker.max_workers
+    }
 
 @app.get("/api/speakers")
 async def get_speakers():
@@ -1070,9 +1089,12 @@ async def convert_pdf_to_slides(job_id: str, pdf_path: str, target_duration: int
         )
         
         job.status = "slides_ready"
-        job.status_code = StatusCode.COMPLETED
-        job.progress = 100
+        job.status_code = StatusCode.DIALOGUE_COMPLETED
+        job.progress = 50
         job.updated_at = datetime.now()
+        
+        # 音声と動画生成を続ける
+        await generate_complete_video(job_id)
         
     except Exception as e:
         import traceback

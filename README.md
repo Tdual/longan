@@ -130,10 +130,112 @@ cp .env.example .env
 # Docker Composeで起動
 docker-compose up -d
 ```
+
+### Docker Compose設定の詳細
+
+`docker-compose.yml`では以下の3つのサービスを定義しています：
+
+#### 1. **voicevox** サービス（音声合成エンジン）
+```yaml
+voicevox:
+  image: voicevox/voicevox_engine:cpu-ubuntu20.04-latest
+  ports:
+    - "50021:50021"
+```
+- **役割**: 日本語テキストを音声に変換する音声合成エンジン
+- **イメージ**: VOICEVOXの公式DockerイメージのCPU版を使用
+- **ポート**: 50021番ポートでAPIを提供
+- **特徴**: GPU不要で動作し、18種類のキャラクターボイスが利用可能
+
+#### 2. **api** サービス（バックエンドAPI）
+```yaml
+api:
+  build:
+    context: .
+    dockerfile: Dockerfile.api
+  ports:
+    - "8002:8000"
+  volumes:
+    - ./uploads:/app/uploads
+    - ./slides:/app/slides
+    - ./audio:/app/audio
+    - ./output:/app/output
+    - ./data:/app/data
+  environment:
+    - VOICEVOX_URL=http://voicevox:50021
+  depends_on:
+    - voicevox
+```
+- **役割**: PDFの処理、対話生成、音声生成、動画作成を行うAPIサーバー
+- **ポート**: ホストの8002番ポートをコンテナの8000番にマッピング
+- **ボリューム**: 
+  - `uploads`: アップロードされたPDFファイル
+  - `slides`: PDFから変換されたスライド画像
+  - `audio`: 生成された音声ファイル
+  - `output`: 最終的な動画ファイル
+  - `data`: 対話スクリプトのJSONファイル
+- **環境変数**: VOICEVOXへの接続URLを設定（サービス間通信）
+- **依存関係**: voicevoxサービスが起動してから起動
+
+#### 3. **frontend** サービス（Webアプリ）
+```yaml
+frontend:
+  build:
+    context: ./frontend
+    dockerfile: Dockerfile
+  ports:
+    - "3000:3000"
+  environment:
+    - PUBLIC_API_URL=http://localhost:8002
+  depends_on:
+    - api
+```
+- **役割**: ユーザーインターフェースを提供するWebアプリケーション
+- **ポート**: 3000番ポートでWebアプリにアクセス
+- **環境変数**: APIサーバーのURLを設定
+- **依存関係**: apiサービスが起動してから起動
+
+#### ネットワーク設定
+```yaml
+networks:
+  default:
+    name: app-network
+```
+- 全サービスが同一ネットワーク（app-network）に接続
+- サービス間はサービス名で通信可能（例：`http://voicevox:50021`）
+
 これで以下のサービスが起動します：
 - Webアプリ: http://localhost:3000
-- API: http://localhost:8000
+- API: http://localhost:8002
 - VOICEVOX: http://localhost:50021
+
+### Docker Composeの基本操作
+
+```bash
+# サービスの起動（バックグラウンド実行）
+docker-compose up -d
+
+# サービスの停止
+docker-compose down
+
+# サービスの再起動（コード変更を反映）
+docker-compose restart api
+
+# ログの確認
+docker-compose logs -f api      # APIのログをリアルタイム表示
+docker-compose logs frontend    # フロントエンドのログ表示
+docker-compose logs voicevox    # VOICEVOXのログ表示
+
+# コンテナの状態確認
+docker-compose ps
+
+# 再ビルド（Dockerfileを変更した場合）
+docker-compose build --no-cache api
+docker-compose up -d
+
+# 完全なクリーンアップ（データも削除）
+docker-compose down -v
+```
 
 ### 4. ローカル環境での起動（代替方法）
 
