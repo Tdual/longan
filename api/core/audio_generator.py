@@ -8,6 +8,7 @@ from scipy.io import wavfile
 from scipy import signal
 import librosa
 import soundfile as sf
+import noisereduce as nr
 
 # srcディレクトリをパスに追加
 sys.path.append(str(Path(__file__).parent.parent.parent / "src"))
@@ -40,21 +41,63 @@ class ImprovedAudioProcessor:
         
         return audio_data
     
-    def apply_beep_notch_filter(self, audio_data):
-        """ビーン音の特定周波数を除去（会話音質は保持）"""
+    def apply_spectral_gating(self, audio_data, sr=None):
+        """スペクトルゲーティングによるビープ音除去（改善版）"""
         if len(audio_data) == 0:
             return audio_data
             
-        # ビーン音の典型的周波数を狙い撃ち
-        target_freqs = [1000, 1500, 2000, 2500, 3000]
+        if sr is None:
+            sr = self.sample_rate
+            
+        try:
+            # 2段階処理で強いビープ音にも対応
+            
+            # ステップ1: 300-400Hz帯域の強いビープ音を重点的に除去
+            # より強い設定でビープ音帯域を処理
+            reduced_noise_step1 = nr.reduce_noise(
+                y=audio_data, 
+                sr=sr,
+                stationary=True,  # 定常ノイズ（ビープ音）に最適
+                prop_decrease=0.85,  # ノイズを85%減衰（より強め）
+                freq_mask_smooth_hz=200,  # 周波数マスクを狭めて精密に
+                time_mask_smooth_ms=50,  # 時間マスクも狭めて応答性向上
+                y_noise=None,  # 自動でノイズプロファイルを学習
+                n_fft=2048  # FFTサイズを指定（周波数分解能向上）
+            )
+            
+            # ステップ2: 全体的な微調整（音質保持）
+            reduced_noise = nr.reduce_noise(
+                y=reduced_noise_step1,  # ステップ1の結果を入力
+                sr=sr,
+                stationary=False,  # 非定常ノイズも考慮
+                prop_decrease=0.5,  # 控えめに微調整
+                freq_mask_smooth_hz=800,  # 広めのスムージングで自然さを保持
+                time_mask_smooth_ms=150,  # 時間的な滑らかさを確保
+                n_fft=2048
+            )
+            
+            print("スペクトルゲーティング適用完了（2段階処理・改善版）")
+            return reduced_noise.astype(np.float32)
+            
+        except Exception as e:
+            print(f"スペクトルゲーティングエラー: {e}")
+            # エラー時は元データをそのまま返す
+            return audio_data
+    
+    def apply_beep_notch_filter_fallback(self, audio_data):
+        """フォールバック用の簡易ノッチフィルタ"""
+        if len(audio_data) == 0:
+            return audio_data
+            
+        # 低周波ビープ音をターゲット（300-500Hz）
+        target_freqs = [300, 350, 400, 450, 500]
         
         for freq in target_freqs:
             try:
-                # Q値を高く設定して狭い帯域のみ除去
-                Q = 30.0  # 高いQ値で会話に影響しない
-                w = freq / (self.sample_rate / 2)  # 正規化周波数
+                # 低周波用に調整したQ値
+                Q = 20.0  # 低周波では少し広めに
+                w = freq / (self.sample_rate / 2)
                 
-                # ナイキスト周波数を超える場合はスキップ
                 if w >= 1.0:
                     continue
                     
@@ -91,36 +134,30 @@ class ImprovedAudioProcessor:
         return audio_data
     
     def process_voicevox_audio(self, input_path, output_path=None):
-        """VOICEVOXの音声を後処理（テンポ維持）"""
+        """VOICEVOXの音声を後処理（noisereduceのみ使用）"""
         try:
-            # 音声を読み込み
-            audio_data, sr = librosa.load(input_path, sr=self.sample_rate, mono=True)
+            # 音声を読み込み（元のサンプリングレートを維持）
+            audio_data, sr = librosa.load(input_path, sr=None, mono=True)
             
             if len(audio_data) == 0:
                 print(f"警告: 空の音声ファイル {input_path}")
                 return input_path
             
-            # 1. クリック音除去
-            audio_data = self.remove_click_noise(audio_data)
+            # noisereduceのみでビープ音除去
+            audio_data = self.apply_spectral_gating(audio_data, sr)
             
-            # 2. ビーン音の特定周波数を除去
-            audio_data = self.apply_beep_notch_filter(audio_data)
-            
-            # 3. スマートフェード適用
-            audio_data = self.smart_fade(audio_data, fade_in_ms=50, fade_out_ms=50)
-            
-            # 4. 音量正規化（クリッピング防止）
+            # 音量正規化（クリッピング防止）
             max_val = np.max(np.abs(audio_data))
             if max_val > 0:
                 audio_data = audio_data * 0.95 / max_val
             
-            # 5. 保存
+            # 保存
             if output_path is None:
                 output_path = input_path  # 上書き
                 
-            # soundfileで保存（サンプリングレート指定）
+            # soundfileで保存（元のサンプリングレート維持）
             sf.write(output_path, audio_data, sr)
-            print(f"音声後処理完了: {output_path}")
+            print(f"音声後処理完了: {output_path} (SR: {sr}Hz)")
             
             return output_path
             
@@ -247,6 +284,7 @@ class AudioGenerator:
                     if current_speaker_info.get("name") == "九州そら":
                         current_speed_scale = speed_scale * 1.2
                 
+                # 標準パラメータ（noisereduceに任せる）
                 synthesis_data["speedScale"] = current_speed_scale
                 synthesis_data["pitchScale"] = pitch_scale
                 synthesis_data["intonationScale"] = intonation_scale
