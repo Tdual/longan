@@ -1272,6 +1272,7 @@ async def generate_dialogue_task(job_id: str, additional_prompt: Optional[str] =
         job.status = "dialogue_ready"
         job.status_code = StatusCode.COMPLETED
         job.progress = 100
+        job.error_code = None  # エラーコードをクリアして過去のエラー表示を防ぐ
         job.updated_at = datetime.now()
         
     except Exception as e:
@@ -1408,6 +1409,7 @@ async def generate_complete_video(job_id: str):
         job.status_code = StatusCode.COMPLETED
         job.progress = 100
         job.result_url = f"/api/jobs/{job_id}/download"
+        job.error_code = None  # エラーコードをクリアして過去のエラー表示を防ぐ
         job.updated_at = datetime.now()
         
     except Exception as e:
@@ -1444,6 +1446,7 @@ async def generate_audio_task(
         job.status = "audio_ready"
         job.status_code = StatusCode.COMPLETED
         job.progress = 60
+        job.error_code = None  # エラーコードをクリアして過去のエラー表示を防ぐ
         job.updated_at = datetime.now()
         
     except Exception as e:
@@ -1467,6 +1470,7 @@ async def create_video_task(job_id: str, slide_numbers: Optional[List[int]]):
         job.status_code = StatusCode.COMPLETED
         job.progress = 100
         job.result_url = f"/api/jobs/{job_id}/download"
+        job.error_code = None  # エラーコードをクリアして過去のエラー表示を防ぐ
         job.updated_at = datetime.now()
         
     except Exception as e:

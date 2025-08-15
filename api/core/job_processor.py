@@ -40,6 +40,7 @@ class JobProcessor:
             
             job.status_code = StatusCode.PDF_COMPLETED
             job.progress = 25
+            job.error_code = None  # エラーコードをクリア
             job.updated_at = datetime.now()
             
             logger.info(f"PDF処理完了: {job_id}, スライド数: {slide_count}")
@@ -103,6 +104,7 @@ class JobProcessor:
             
             job.status_code = StatusCode.DIALOGUE_COMPLETED
             job.progress = 60
+            job.error_code = None  # エラーコードをクリア
             job.updated_at = datetime.now()
             
             logger.info(f"対話生成完了: {job_id}")
@@ -138,6 +140,7 @@ class JobProcessor:
             
             job.status_code = StatusCode.AUDIO_COMPLETED
             job.progress = 85
+            job.error_code = None  # エラーコードをクリア
             job.updated_at = datetime.now()
             
             logger.info(f"音声生成完了: {job_id}")
@@ -169,6 +172,7 @@ class JobProcessor:
             job.status_code = StatusCode.COMPLETED
             job.progress = 100
             job.result_url = f"/api/jobs/{job_id}/download"
+            job.error_code = None  # エラーコードをクリア
             job.updated_at = datetime.now()
             
             logger.info(f"動画作成完了: {job_id}, パス: {video_path}")
