@@ -47,6 +47,8 @@ class VideoCreator:
             # 該当するスライドの音声ファイルを探す
             audio_files = sorted(self.audio_dir.glob(f"slide_{slide_num:03d}_*_*.wav"))
             
+            print(f"スライド {slide_num} ({slide_key}): 音声ファイル {len(audio_files)} 個見つかりました")
+            
             for audio_file in audio_files:
                 # ファイル名から話者を特定
                 parts = audio_file.stem.split("_")
@@ -56,6 +58,7 @@ class VideoCreator:
                         "speaker": speaker,
                         "audio_path": str(audio_file)
                     })
+                    print(f"  - {audio_file.name}: speaker={speaker}")
         
         # 動画作成
         creator = DialogueVideoCreator()

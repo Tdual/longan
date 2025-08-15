@@ -47,6 +47,7 @@ class CreateVideoRequest(BaseModel):
 class GenerateDialogueRequest(BaseModel):
     job_id: str
     additional_prompt: Optional[str] = None  # AIへの追加指示
+    continue_to_video: bool = False  # 対話生成後に音声・動画生成を続けるか
 
 class UpdateDialogueRequest(BaseModel):
     job_id: str
@@ -239,10 +240,10 @@ async def generate_audio(
     
     job = jobs_db[job_id]
     
-    if job.status != "slides_ready":
+    if job.status not in ["slides_ready", "dialogue_ready"]:
         raise HTTPException(
             status_code=400, 
-            detail="スライド変換が完了していません"
+            detail="スライド変換または対話スクリプトの準備が完了していません"
         )
     
     # ステータス更新
@@ -339,7 +340,7 @@ async def generate_dialogue_only(
     
     job = jobs_db[job_id]
     
-    if job.status not in ["slides_ready", "dialogue_ready"]:
+    if job.status not in ["slides_ready", "dialogue_ready", "completed"]:
         if job.status == "generating_dialogue":
             print(f"エラー: 対話生成が進行中です。ジョブID: {job_id}, ステータス: {job.status}")
             raise HTTPException(
@@ -359,8 +360,15 @@ async def generate_dialogue_only(
                 detail=f"対話生成できない状態です: {job.status}"
             )
     
-    # 既に同じジョブが実行中かチェック
-    if async_worker.is_task_running(f"dialogue_{job_id}"):
+    # 再生成の場合はタスクIDにタイムスタンプを付けて重複を避ける
+    import time
+    if request.additional_prompt:
+        task_id = f"dialogue_regen_{job_id}_{int(time.time())}"
+    else:
+        task_id = f"dialogue_{job_id}"
+    
+    # 既に同じジョブが実行中かチェック（初回生成の場合のみ）
+    if not request.additional_prompt and async_worker.is_task_running(task_id):
         raise HTTPException(
             status_code=409, 
             detail="対話生成が既に実行中です"
@@ -374,9 +382,9 @@ async def generate_dialogue_only(
     
     # 非同期ワーカーで対話生成
     await async_worker.submit_task(
-        f"dialogue_{job_id}",
+        task_id,
         JobProcessor.generate_dialogue_sync,
-        job_id, request.additional_prompt, jobs_db
+        job_id, request.additional_prompt, jobs_db, request.continue_to_video
     )
     
     return {"message": "対話スクリプト生成を開始しました（非同期処理）", "job_id": job_id}
@@ -562,29 +570,25 @@ async def upload_dialogue_csv(
                 except UnicodeDecodeError:
                     raise HTTPException(status_code=400, detail="CSVファイルのエンコーディングが不正です（UTF-8、Shift-JIS、またはCP932を使用してください）")
     
-    # CSVをパース
-    csv_reader = csv.reader(io.StringIO(csv_text))
-    
-    # ヘッダーをスキップ
-    try:
-        header = next(csv_reader)
-    except StopIteration:
-        raise HTTPException(status_code=400, detail="CSVファイルが空です")
+    # CSVをパース（DictReaderを使用してヘッダーを正しく処理）
+    csv_reader = csv.DictReader(io.StringIO(csv_text))
     
     # データを検証して読み込み
     dialogue_data = {}
     errors = []
-    line_num = 1  # ヘッダーの次から
     
-    for row in csv_reader:
-        line_num += 1
-        
-        # 列数チェック
-        if len(row) != 4:
-            errors.append(f"行{line_num}: 列数が不正です（4列必要ですが{len(row)}列あります）")
+    for line_num, row in enumerate(csv_reader, start=2):  # ヘッダーの次から
+        # 必要な列が存在するか確認
+        required_columns = ['会話番号', 'スライド番号', '発話者名', 'テキスト']
+        missing_columns = [col for col in required_columns if col not in row]
+        if missing_columns:
+            errors.append(f"行{line_num}: 必要な列がありません: {', '.join(missing_columns)}")
             continue
         
-        conversation_num, slide_num, speaker_display, text = row
+        conversation_num = row.get('会話番号', '').strip()
+        slide_num = row.get('スライド番号', '').strip()
+        speaker_display = row.get('発話者名', '').strip()
+        text = row.get('テキスト', '').strip()
         
         # 会話番号の検証（順番チェックはしない）
         try:
@@ -618,9 +622,18 @@ async def upload_dialogue_csv(
                 speaker1_name = metadata.get("speaker1", {}).get("name", "四国めたん")
                 speaker2_name = metadata.get("speaker2", {}).get("name", "ずんだもん")
         
-        if speaker_display.strip() == speaker1_name:
+        # デバッグ用ログ
+        print(f"CSVインポート: 話者判定 - speaker1: {speaker1_name}, speaker2: {speaker2_name}, 入力: {speaker_display.strip()}")
+        
+        # 話者名の判定を柔軟にする（部分一致も許可）
+        if speaker1_name in speaker_display.strip() or speaker_display.strip() in speaker1_name:
             speaker = 'speaker1'
-        elif speaker_display.strip() == speaker2_name:
+        elif speaker2_name in speaker_display.strip() or speaker_display.strip() in speaker2_name:
+            speaker = 'speaker2'
+        # speaker1/speaker2形式も受け入れる
+        elif speaker_display.strip().lower() in ['speaker1', 'キャラ1', 'キャラクター1']:
+            speaker = 'speaker1'
+        elif speaker_display.strip().lower() in ['speaker2', 'キャラ2', 'キャラクター2']:
             speaker = 'speaker2'
         else:
             errors.append(f"行{line_num}: 発話者名が不正です（'{speaker1_name}'または'{speaker2_name}'である必要があります）: '{speaker_display}'")
@@ -667,10 +680,17 @@ async def upload_dialogue_csv(
     with open(katakana_path, 'w', encoding='utf-8') as f:
         json.dump(dialogue_data, f, ensure_ascii=False, indent=2)
     
+    # 既存の音声ファイルを削除（新しいスクリプトで再生成が必要）
+    audio_dir = Path.cwd() / "audio" / job_id
+    if audio_dir.exists():
+        import shutil
+        shutil.rmtree(audio_dir)
+        print(f"既存の音声ファイルを削除しました: {audio_dir}")
+    
     # ジョブステータスを更新
     job = jobs_db[job_id]
     job.status = "dialogue_ready"
-    job.status_code = StatusCode.COMPLETED
+    job.status_code = StatusCode.DIALOGUE_COMPLETED  # 音声生成が必要なことを示す
     job.updated_at = datetime.now()
     
     # 推定時間を再計算
@@ -710,10 +730,17 @@ async def update_dialogue(
     with open(katakana_path, 'w', encoding='utf-8') as f:
         json.dump(request.dialogue_data, f, ensure_ascii=False, indent=2)
     
+    # 既存の音声ファイルを削除（新しいスクリプトで再生成が必要）
+    audio_dir = Path.cwd() / "audio" / job_id
+    if audio_dir.exists():
+        import shutil
+        shutil.rmtree(audio_dir)
+        print(f"既存の音声ファイルを削除しました: {audio_dir}")
+    
     # ジョブステータスを更新
     job = jobs_db[job_id]
     job.status = "dialogue_ready"
-    job.status_code = StatusCode.COMPLETED
+    job.status_code = StatusCode.DIALOGUE_COMPLETED  # 音声生成が必要なことを示す
     job.updated_at = datetime.now()
     
     # 推定時間を再計算
@@ -784,10 +811,14 @@ async def get_speakers():
     """利用可能なVOICEVOXスピーカー一覧を取得"""
     import requests
     
-    voicevox_url = os.getenv("VOICEVOX_URL", "http://localhost:50021")
+    # Docker環境の場合はvoicevoxホスト名を使用
+    if os.path.exists("/.dockerenv"):
+        voicevox_url = "http://voicevox:50021"
+    else:
+        voicevox_url = os.getenv("VOICEVOX_URL", "http://localhost:50021")
     
     try:
-        response = requests.get(f"{voicevox_url}/speakers")
+        response = requests.get(f"{voicevox_url}/speakers", timeout=5)
         response.raise_for_status()
         speakers = response.json()
         

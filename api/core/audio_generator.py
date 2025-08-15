@@ -208,6 +208,9 @@ class AudioGenerator:
         with open(dialogue_data_path, "r", encoding="utf-8") as f:
             dialogue_data = json.load(f)
         
+        print(f"音声生成: 対話データを読み込みました - {dialogue_data_path}")
+        print(f"音声生成: スライド数 = {len(dialogue_data)}")
+        
         # メタデータからスピーカー設定を読み込む
         metadata_path = self.base_dir / "uploads" / self.job_id / "metadata.json"
         speaker_info = {}

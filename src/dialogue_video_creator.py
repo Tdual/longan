@@ -127,16 +127,21 @@ class DialogueVideoCreator:
         
         # 各スライドのクリップを作成
         for i, image_path in enumerate(image_paths):
-            slide_key = f"slide_{i+1}"
+            # ファイル名からスライド番号を取得（例: slide_001.png -> 1）
+            from pathlib import Path
+            slide_num = int(Path(image_path).stem.split("_")[1])
+            slide_key = f"slide_{slide_num}"
             audio_infos = dialogue_audio_info.get(slide_key, [])
             
-            print(f"スライド {i+1} の動画クリップを作成中...")
+            print(f"スライド {slide_num} ({slide_key}) の動画クリップを作成中... 音声: {len(audio_infos)} 個")
             clip = self.create_dialogue_slide(image_path, audio_infos)
             clips.append(clip)
         
         # すべてのクリップを連結
-        print("動画を連結中...")
+        print(f"動画を連結中... 合計 {len(clips)} クリップ")
+        print(f"dialogue_audio_info のキー: {list(dialogue_audio_info.keys())}")
         final_video = concatenate_videoclips(clips)
+        print(f"最終動画の長さ: {final_video.duration} 秒")
         
         # 動画全体の最後に長めのフェードアウトを追加（完全にブチっという音を防ぐ）
         fade_duration = 1.0  # 1.0秒のフェードアウトに延長
@@ -148,6 +153,9 @@ class DialogueVideoCreator:
         # 動画を出力
         print(f"動画を出力中: {output_path}")
         # Docker環境での最適化（高画質版・QuickTime互換）
+        # 一時音声ファイルのパスを生成
+        temp_audiofile = tempfile.mktemp(suffix='.m4a')
+        
         final_video.write_videofile(
             output_path,
             fps=fps,
@@ -158,11 +166,12 @@ class DialogueVideoCreator:
             threads=16,  # スレッド数を増やして並列処理を強化
             bitrate='1500k',  # ビットレートを少し下げて処理速度改善
             audio_bitrate='192k',  # 音声品質は維持
-            temp_audiofile=None,
+            temp_audiofile=temp_audiofile,
             remove_temp=True,
             ffmpeg_params=[
                 '-max_muxing_queue_size', '1024',  # メモリ不足対策
-                '-pix_fmt', 'yuv420p'  # QuickTime互換のピクセルフォーマット
+                '-pix_fmt', 'yuv420p',  # QuickTime互換のピクセルフォーマット
+                '-movflags', '+faststart'  # Web再生に最適化（moov atomを先頭に配置）
             ]
         )
         
